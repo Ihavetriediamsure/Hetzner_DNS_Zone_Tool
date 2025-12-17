@@ -3519,8 +3519,19 @@ async function loadPeerSyncConfig() {
         if (!response.ok) throw new Error('Failed to load peer-sync config');
         const config = await response.json();
         
-        // Update UI
-        document.getElementById('peerSyncEnabled').checked = config.enabled;
+        // Update UI - ensure element exists before setting
+        const enabledCheckbox = document.getElementById('peerSyncEnabled');
+        if (enabledCheckbox) {
+            enabledCheckbox.checked = config.enabled || false;
+        } else {
+            console.warn('peerSyncEnabled checkbox not found, retrying in 100ms...');
+            setTimeout(() => {
+                const retryCheckbox = document.getElementById('peerSyncEnabled');
+                if (retryCheckbox) {
+                    retryCheckbox.checked = config.enabled || false;
+                }
+            }, 100);
+        }
         document.getElementById('peerSyncInterval').value = config.interval;
         document.getElementById('peerSyncTimeout').value = config.timeout;
         document.getElementById('peerSyncMaxRetries').value = config.max_retries;
