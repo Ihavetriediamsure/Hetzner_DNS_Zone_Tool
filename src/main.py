@@ -949,7 +949,11 @@ async def list_zone_rrsets(zone_id: str, token_id: Optional[str] = None):
                 rrset_dict["local_ip"] = rrset_data.get("local_ip")
                 rrset_dict["port"] = rrset_data.get("port")
                 rrset_dict["auto_update_enabled"] = rrset_data.get("auto_update_enabled", False)
-                rrset_dict["ttl_override"] = rrset_data.get("ttl")
+                # Only set ttl_override if it exists and is not None
+                # This allows frontend to distinguish between "not set" (undefined) and "explicitly cleared" (null)
+                ttl_override = rrset_data.get("ttl")
+                if ttl_override is not None:
+                    rrset_dict["ttl_override"] = ttl_override
                 rrset_dict["public_ip"] = public_ip  # Add public IP for display
                 rrset_dict["exists_in_dns"] = True  # Mark as existing in DNS
                 rrsets_dict.append(rrset_dict)
@@ -986,7 +990,7 @@ async def list_zone_rrsets(zone_id: str, token_id: Optional[str] = None):
                         "local_ip": rrset_data.get("local_ip"),
                         "port": rrset_data.get("port"),
                         "auto_update_enabled": rrset_data.get("auto_update_enabled", False),
-                        "ttl_override": rrset_data.get("ttl"),
+                        # Only set ttl_override if it exists and is not None
                         "public_ip": public_ip,
                         "exists_in_dns": False  # Mark as not existing in DNS
                     }

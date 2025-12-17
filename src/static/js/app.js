@@ -534,9 +534,9 @@ async function loadZoneRRSets(zoneId, zoneName, tokenId = null) {
             const dnsRecordIP = records.length > 0 && isIPRecord ? records[0] : null;
             const autoUpdateEnabled = rrset.auto_update_enabled || false;
             // Use TTL override if explicitly set, otherwise use TTL from DNS record
-            // If ttl_override is null/undefined (not set), use the current DNS record TTL
-            // Always use DNS record TTL unless an override is explicitly set
-            const ttlValue = (rrset.ttl_override !== null && rrset.ttl_override !== undefined) 
+            // If ttl_override is undefined (not set), use the current DNS record TTL
+            // Backend only sets ttl_override if it exists, so undefined means "use DNS record TTL"
+            const ttlValue = (rrset.ttl_override !== undefined && rrset.ttl_override !== null) 
                 ? rrset.ttl_override 
                 : (rrset.ttl || 3600);
             const existsInDNS = rrset.exists_in_dns !== false; // Default to true if not specified
