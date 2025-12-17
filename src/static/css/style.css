@@ -701,6 +701,8 @@ input[type="password"]:focus {
     font-size: 0.9em;
     font-family: monospace;
     box-sizing: border-box;
+    height: 32px;
+    line-height: 1.2;
 }
 
 .local-ip-input:focus {
@@ -716,8 +718,8 @@ input[type="password"]:focus {
     font-size: 0.9em;
     font-family: monospace;
     box-sizing: border-box;
-    height: 100%;
-    align-self: stretch;
+    height: 32px;
+    line-height: 1.2;
 }
 
 .local-ip-port-input:focus {
