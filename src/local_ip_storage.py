@@ -6,7 +6,7 @@ import hashlib
 import json
 import time
 from pathlib import Path
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, Union
 
 
 class LocalIPStorage:
@@ -57,11 +57,25 @@ class LocalIPStorage:
         import socket
         return socket.gethostname()
     
+    def _sort_dict_recursively(self, obj: Union[Dict, list, Any]) -> Union[Dict, list, Any]:
+        """Recursively sort all dicts to ensure deterministic hash calculation"""
+        if isinstance(obj, dict):
+            # Sort dict and recursively sort all values
+            return {k: self._sort_dict_recursively(v) for k, v in sorted(obj.items())}
+        elif isinstance(obj, list):
+            # Sort list items recursively
+            return [self._sort_dict_recursively(item) for item in obj]
+        else:
+            # Primitive type, return as-is
+            return obj
+    
     def _calculate_content_hash(self, config_data: Dict) -> str:
         """Calculate hash of config content (without generation field)"""
         config_copy = config_data.copy()
         config_copy.pop('generation', None)  # Remove generation for hash
-        content_str = json.dumps(config_copy, sort_keys=True)
+        # Recursively sort all dicts to ensure deterministic hash
+        sorted_config = self._sort_dict_recursively(config_copy)
+        content_str = json.dumps(sorted_config, sort_keys=True)
         return hashlib.sha256(content_str.encode()).hexdigest()
     
     def _increment_generation(self) -> None:

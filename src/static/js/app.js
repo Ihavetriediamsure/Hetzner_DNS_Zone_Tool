@@ -524,7 +524,7 @@ async function loadZoneRRSets(zoneId, zoneName, tokenId = null) {
         tableHTML += '<th>Name</th>';
         tableHTML += '<th>Typ</th>';
         tableHTML += '<th>Auto-Update</th>';
-        tableHTML += '<th>Monitor IP</th>';
+        tableHTML += '<th>Monitor IP / Port</th>';
         tableHTML += '<th>Status</th>';
         tableHTML += '<th>Public IP</th>';
         tableHTML += '<th>Current TTL</th>';
@@ -588,7 +588,7 @@ async function loadZoneRRSets(zoneId, zoneName, tokenId = null) {
                 const savedPort = rrset.port || '';
                 tableHTML += `<div style="display: flex; gap: 5px; align-items: stretch;">`;
                 tableHTML += `<input type="text" class="local-ip-input" placeholder="e.g. 192.168.1.100" value="${escapeHtml(savedLocalIP)}" data-rrset-id="${rrsetId}" data-zone-id="${zoneId}" style="flex: 1;" onchange="saveLocalIPWithPort('${zoneId}', '${rrsetId}'); startAutomaticHealthChecks('${zoneId}');">`;
-                tableHTML += `<input type="number" class="local-ip-port-input" placeholder="Port" value="${escapeHtml(savedPort)}" data-rrset-id="${rrsetId}" data-zone-id="${zoneId}" min="1" max="65535" style="width: 100px;" onchange="saveLocalIPWithPort('${zoneId}', '${rrsetId}'); startAutomaticHealthChecks('${zoneId}');">`;
+                tableHTML += `<input type="number" class="local-ip-port-input" placeholder="Port" value="${escapeHtml(savedPort)}" data-rrset-id="${rrsetId}" data-zone-id="${zoneId}" min="1" max="65535" style="width: 100px;" oninput="debouncePortInput('${zoneId}', '${rrsetId}');">`;
                 tableHTML += `</div>`;
             }
             tableHTML += '</td>';
@@ -991,6 +991,25 @@ async function saveLocalIP(zoneId, rrsetId, localIP) {
     } else {
         await saveLocalIPWithPort(zoneId, rrsetId, localIP, null);
     }
+}
+
+// Debounce timers for port input (500ms delay)
+const portInputDebounceTimers = {};
+
+function debouncePortInput(zoneId, rrsetId) {
+    const key = `${zoneId}:${rrsetId}`;
+    
+    // Clear existing timer
+    if (portInputDebounceTimers[key]) {
+        clearTimeout(portInputDebounceTimers[key]);
+    }
+    
+    // Set new timer (500ms delay)
+    portInputDebounceTimers[key] = setTimeout(() => {
+        saveLocalIPWithPort(zoneId, rrsetId);
+        startAutomaticHealthChecks(zoneId);
+        delete portInputDebounceTimers[key];
+    }, 500);
 }
 
 async function saveLocalIPWithPort(zoneId, rrsetId, localIP = null, port = null) {
@@ -4135,7 +4154,7 @@ async function checkAutoSyncAndWarn() {
     }
 }
 
-// Trigger auto-sync with banner (max 2s timeout)
+// Trigger auto-sync with banner (checks Last Sync Events after 2-3s)
 async function triggerAutoSyncWithBanner() {
     const enabled = await isAutoSyncEnabled();
     if (!enabled) {
@@ -4148,40 +4167,92 @@ async function triggerAutoSyncWithBanner() {
         // Show "Sending..." banner immediately
         showToast('Sending configuration to all peers...', 'info');
         
-        // Trigger auto-sync with 2s timeout
-        const response = await fetch('/api/v1/peer-sync/auto-sync', {
+        // Get timestamp before triggering sync (to find new events)
+        const beforeSyncTime = new Date().toISOString();
+        
+        // Trigger auto-sync (fire-and-forget, don't wait for result)
+        fetch('/api/v1/peer-sync/auto-sync', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
+        }).catch(err => {
+            console.error('Error triggering auto-sync:', err);
         });
         
-        if (!response.ok) {
-            showToast('Auto-sync failed', 'error');
-            return;
-        }
-        
-        const result = await response.json();
-        
-        if (result.timeout) {
-            // Timeout - don't show banner, sync is running in background
-            return;
-        }
-        
-        if (result.success && result.result) {
-            const syncResult = result.result;
-            const allSuccessful = syncResult.failed_peers && syncResult.failed_peers.length === 0;
-            if (allSuccessful) {
-                showToast('All peers successfully synchronized', 'success');
-            } else {
-                const syncedCount = syncResult.synced_peers ? syncResult.synced_peers.length : 0;
-                const failedCount = syncResult.failed_peers ? syncResult.failed_peers.length : 0;
-                showToast(`Sync completed: ${syncedCount} peers synced, ${failedCount} failed`, 'warning');
+        // Wait 2.5 seconds, then check Last Sync Events for the result
+        setTimeout(async () => {
+            try {
+                const response = await fetch('/api/v1/peer-sync/status');
+                if (!response.ok) {
+                    showToast('Auto-sync status check failed', 'error');
+                    return;
+                }
+                
+                const status = await response.json();
+                
+                // Find all new events after our trigger time
+                if (status.recent_events && status.recent_events.length > 0) {
+                    // Sort events by timestamp (newest first)
+                    const sortedEvents = [...status.recent_events].sort((a, b) => {
+                        const timeA = new Date(a.timestamp).getTime();
+                        const timeB = new Date(b.timestamp).getTime();
+                        return timeB - timeA; // Descending (newest first)
+                    });
+                    
+                    // Find events that happened after we triggered the sync (with 1s tolerance)
+                    const triggerTime = new Date(beforeSyncTime).getTime();
+                    const newEvents = sortedEvents.filter(event => {
+                        const eventTime = new Date(event.timestamp).getTime();
+                        return eventTime >= triggerTime - 1000; // 1s tolerance for clock differences
+                    });
+                    
+                    if (newEvents.length > 0) {
+                        // Count success and error events
+                        const successEvents = newEvents.filter(e => e.status === 'success');
+                        const errorEvents = newEvents.filter(e => e.status === 'error');
+                        
+                        if (errorEvents.length === 0 && successEvents.length > 0) {
+                            // All events were successful
+                            showToast(`All ${successEvents.length} peer(s) successfully synchronized`, 'success');
+                        } else if (successEvents.length > 0 && errorEvents.length > 0) {
+                            // Some succeeded, some failed
+                            showToast(`Sync completed: ${successEvents.length} peer(s) synced, ${errorEvents.length} failed`, 'warning');
+                        } else if (errorEvents.length > 0) {
+                            // All failed
+                            const errorDetails = errorEvents[0].details || 'Unknown error';
+                            showToast(`Auto-sync failed: ${errorDetails}`, 'error');
+                        } else {
+                            // Unknown status
+                            showToast('Sync status unclear', 'warning');
+                        }
+                    } else {
+                        // No new events found - sync might still be running or failed silently
+                        // Check the overall status from overview
+                        const overallStatus = status.overview?.overall_status || 'unknown';
+                        if (overallStatus === 'success') {
+                            showToast('Sync completed successfully', 'success');
+                        } else if (overallStatus === 'error') {
+                            showToast('Sync completed with errors', 'warning');
+                        } else {
+                            // No clear status - sync might still be running, don't show error
+                            console.log('Auto-sync status unclear, sync might still be running');
+                        }
+                    }
+                } else {
+                    // No events at all - sync might still be running
+                    console.log('No sync events found, sync might still be running');
+                }
+                
+                // Refresh the status display
+                await loadPeerSyncStatus();
+            } catch (error) {
+                console.error('Error checking auto-sync status:', error);
+                // Don't show error banner - sync might still be running
             }
-        } else {
-            showToast('Auto-sync failed: ' + (result.message || 'Unknown error'), 'error');
-        }
+        }, 2500); // Wait 2.5 seconds before checking status
+        
     } catch (error) {
         console.error('Error triggering auto-sync:', error);
-        // Don't show error banner if it's just a timeout
+        showToast('Error triggering auto-sync: ' + error.message, 'error');
     }
 }
 

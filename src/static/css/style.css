@@ -720,6 +720,14 @@ input[type="password"]:focus {
     box-sizing: border-box;
     height: 32px;
     line-height: 1.2;
+    /* Hide number input arrows (spinners) */
+    -moz-appearance: textfield;
+}
+
+.local-ip-port-input::-webkit-outer-spin-button,
+.local-ip-port-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
 }
 
 .local-ip-port-input:focus {
