@@ -111,10 +111,12 @@ class AutoUpdateService:
                             
                             # Check if local IP (Monitor IP) is reachable
                             try:
-                                # Use ping method with port 80 as default (for TCP connection test)
+                                # Get port from storage (if configured), otherwise use default 80
+                                monitor_port = settings.get("port") or 80
+                                # Use ping method with configured port (for TCP connection test)
                                 check_result = await monitor.check_internal_ip_reachable(
                                     local_ip.strip(),
-                                    port=80,  # Default port for ping check (TCP connection)
+                                    port=monitor_port,
                                     check_method="ping",
                                     timeout=5
                                 )

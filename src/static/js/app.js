@@ -571,7 +571,11 @@ async function loadZoneRRSets(zoneId, zoneName, tokenId = null) {
             if (!existsInDNS) {
                 tableHTML += `<span style="color: #dc3545;">${escapeHtml(savedLocalIP || '-')}</span>`;
             } else {
-                tableHTML += `<input type="text" class="local-ip-input" placeholder="e.g. 192.168.1.100" value="${escapeHtml(savedLocalIP)}" data-rrset-id="${rrsetId}" data-zone-id="${zoneId}" onchange="saveLocalIP('${zoneId}', '${rrsetId}', this.value); startAutomaticHealthChecks('${zoneId}');">`;
+                const savedPort = rrset.port || '';
+                tableHTML += `<div style="display: flex; gap: 5px; align-items: center;">`;
+                tableHTML += `<input type="text" class="local-ip-input" placeholder="e.g. 192.168.1.100" value="${escapeHtml(savedLocalIP)}" data-rrset-id="${rrsetId}" data-zone-id="${zoneId}" style="flex: 1;" onchange="saveLocalIPWithPort('${zoneId}', '${rrsetId}'); startAutomaticHealthChecks('${zoneId}');">`;
+                tableHTML += `<input type="number" class="local-ip-port-input" placeholder="Port" value="${escapeHtml(savedPort)}" data-rrset-id="${rrsetId}" data-zone-id="${zoneId}" min="1" max="65535" style="width: 80px;" onchange="saveLocalIPWithPort('${zoneId}', '${rrsetId}'); startAutomaticHealthChecks('${zoneId}');">`;
+                tableHTML += `</div>`;
             }
             tableHTML += '</td>';
             
@@ -958,7 +962,28 @@ async function assignServerIP(zoneId, rrsetId) {
 }
 
 async function saveLocalIP(zoneId, rrsetId, localIP) {
-    if (!localIP || !localIP.trim()) {
+    // Legacy function - redirect to new function with port
+    const row = document.querySelector(`tr[data-rrset-id="${rrsetId}"]`);
+    if (row) {
+        const portInput = row.querySelector('.local-ip-port-input');
+        const port = portInput ? (portInput.value ? parseInt(portInput.value) : null) : null;
+        await saveLocalIPWithPort(zoneId, rrsetId, localIP, port);
+    } else {
+        await saveLocalIPWithPort(zoneId, rrsetId, localIP, null);
+    }
+}
+
+async function saveLocalIPWithPort(zoneId, rrsetId, localIP = null, port = null) {
+    const row = document.querySelector(`tr[data-rrset-id="${rrsetId}"]`);
+    if (!row) return;
+    
+    const ipInput = row.querySelector('.local-ip-input');
+    const portInput = row.querySelector('.local-ip-port-input');
+    
+    const ip = localIP !== null ? localIP.trim() : (ipInput ? ipInput.value.trim() : '');
+    const portValue = port !== null ? port : (portInput ? (portInput.value ? parseInt(portInput.value) : null) : null);
+    
+    if (!ip || !ip.trim()) {
         // Empty IP - delete it
         try {
             const tokenId = getTokenIdForZone(zoneId);
@@ -972,6 +997,8 @@ async function saveLocalIP(zoneId, rrsetId, localIP) {
             
             if (response.ok) {
                 showToast('Monitor IP deleted', 'success');
+                if (ipInput) ipInput.value = '';
+                if (portInput) portInput.value = '';
             }
         } catch (error) {
             console.error('Error deleting local IP:', error);
@@ -979,19 +1006,22 @@ async function saveLocalIP(zoneId, rrsetId, localIP) {
         return;
     }
     
-    const ip = localIP.trim();
-    
     // Validate IP format
     const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$|^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$/;
     if (!ipRegex.test(ip)) {
         showToast('Invalid IP format', 'error');
         // Reset input to previous value
-        const row = document.querySelector(`tr[data-rrset-id="${rrsetId}"]`);
-        if (row) {
-            const input = row.querySelector('.local-ip-input');
-            if (input) {
-                input.value = input.getAttribute('data-saved-value') || '';
-            }
+        if (ipInput) {
+            ipInput.value = ipInput.getAttribute('data-saved-value') || '';
+        }
+        return;
+    }
+    
+    // Validate port if provided
+    if (portValue !== null && (portValue < 1 || portValue > 65535)) {
+        showToast('Invalid port (must be 1-65535)', 'error');
+        if (portInput) {
+            portInput.value = portInput.getAttribute('data-saved-port') || '';
         }
         return;
     }
@@ -1006,7 +1036,8 @@ async function saveLocalIP(zoneId, rrsetId, localIP) {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
-                local_ip: ip
+                local_ip: ip,
+                port: portValue
             })
         });
         
@@ -1018,13 +1049,12 @@ async function saveLocalIP(zoneId, rrsetId, localIP) {
         
         const data = await response.json();
         
-        // Save current value as saved value
-        const row = document.querySelector(`tr[data-rrset-id="${rrsetId}"]`);
-        if (row) {
-            const input = row.querySelector('.local-ip-input');
-            if (input) {
-                input.setAttribute('data-saved-value', ip);
-            }
+        // Save current values as saved values
+        if (ipInput) {
+            ipInput.setAttribute('data-saved-value', ip);
+        }
+        if (portInput) {
+            portInput.setAttribute('data-saved-port', portValue || '');
         }
         
         showToast('Monitor IP saved', 'success');
@@ -1043,11 +1073,13 @@ async function checkIPStatus(zoneId, rrsetId) {
     if (!row) return;
     
     const localIpInput = row.querySelector('.local-ip-input');
+    const localPortInput = row.querySelector('.local-ip-port-input');
     const statusSpan = document.getElementById(`status-${rrsetId}`);
     
     if (!localIpInput || !statusSpan) return;
     
     const ip = localIpInput.value.trim();
+    const port = localPortInput ? (localPortInput.value ? parseInt(localPortInput.value) : null) : null;
     
     // If no IP is set, show "nicht erreichbar" and return
     if (!ip) {
@@ -1079,6 +1111,7 @@ async function checkIPStatus(zoneId, rrsetId) {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
                 ip: ip,
+                port: port,
                 check_method: 'ping',
                 timeout: 5
             })
@@ -1119,6 +1152,7 @@ async function checkIPStatus(zoneId, rrsetId) {
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
                         ip: ip,
+                        port: port,
                         check_method: 'ping',
                         timeout: 5,
                         previous_status: true

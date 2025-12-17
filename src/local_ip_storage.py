@@ -54,7 +54,7 @@ class LocalIPStorage:
             # Update path for future use
             self.storage_path = home_storage
     
-    def set_local_ip(self, zone_id: str, rrset_id: str, local_ip: str) -> None:
+    def set_local_ip(self, zone_id: str, rrset_id: str, local_ip: str, port: Optional[int] = None) -> None:
         """Set local IP for a DNS record"""
         storage = self._load_storage()
         
@@ -66,6 +66,10 @@ class LocalIPStorage:
             "rrset_id": rrset_id,
             "local_ip": local_ip
         })
+        if port is not None:
+            storage["local_ips"][key]["port"] = port
+        elif "port" in storage["local_ips"][key]:
+            del storage["local_ips"][key]["port"]
         
         self._storage = storage
         self._save_storage()
@@ -205,6 +209,18 @@ class LocalIPStorage:
         
         return None
     
+    def get_local_ip_port(self, zone_id: str, rrset_id: str) -> Optional[int]:
+        """Get port for local IP monitoring"""
+        storage = self._load_storage()
+        
+        key = f"{zone_id}:{rrset_id}"
+        record = storage["local_ips"].get(key)
+        
+        if record:
+            return record.get("port")
+        
+        return None
+    
     def delete_local_ip(self, zone_id: str, rrset_id: str) -> None:
         """Delete local IP for a DNS record"""
         storage = self._load_storage()
@@ -242,6 +258,7 @@ class LocalIPStorage:
                 if rrset_id:
                     result[rrset_id] = {
                         "local_ip": record.get("local_ip"),
+                        "port": record.get("port"),
                         "auto_update_enabled": record.get("auto_update_enabled", False),
                         "ttl": record.get("ttl")
                     }

@@ -947,6 +947,7 @@ async def list_zone_rrsets(zone_id: str, token_id: Optional[str] = None):
                 rrset_dict = rrset.dict()
                 rrset_data = local_ips_data.get(rrset.id, {})
                 rrset_dict["local_ip"] = rrset_data.get("local_ip")
+                rrset_dict["port"] = rrset_data.get("port")
                 rrset_dict["auto_update_enabled"] = rrset_data.get("auto_update_enabled", False)
                 rrset_dict["ttl_override"] = rrset_data.get("ttl")
                 rrset_dict["public_ip"] = public_ip  # Add public IP for display
@@ -983,6 +984,7 @@ async def list_zone_rrsets(zone_id: str, token_id: Optional[str] = None):
                         "records": [],
                         "comment": "",
                         "local_ip": rrset_data.get("local_ip"),
+                        "port": rrset_data.get("port"),
                         "auto_update_enabled": rrset_data.get("auto_update_enabled", False),
                         "ttl_override": rrset_data.get("ttl"),
                         "public_ip": public_ip,
@@ -1027,6 +1029,7 @@ class CheckIPRequest(BaseModel):
 
 class SaveLocalIPRequest(BaseModel):
     local_ip: str
+    port: Optional[int] = None
 
 
 class SetAutoUpdateRequest(BaseModel):
@@ -1515,9 +1518,9 @@ async def save_local_ip(zone_id: str, rrset_id: str, request: SaveLocalIPRequest
             raise HTTPException(status_code=400, detail="Invalid IP format")
         
         storage = get_local_ip_storage()
-        storage.set_local_ip(zone_id, rrset_id, request.local_ip)
+        storage.set_local_ip(zone_id, rrset_id, request.local_ip, port=request.port)
         
-        return {"success": True, "local_ip": request.local_ip, "zone_id": zone_id, "rrset_id": rrset_id}
+        return {"success": True, "local_ip": request.local_ip, "port": request.port, "zone_id": zone_id, "rrset_id": rrset_id}
     except HTTPException:
         raise
     except Exception as e:
