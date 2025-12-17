@@ -597,7 +597,7 @@ async function loadZoneRRSets(zoneId, zoneName, tokenId = null) {
                 tableHTML += `<span style="color: #dc3545;">${escapeHtml(savedPort || '-')}</span>`;
             } else {
                 const savedPort = rrset.port || '';
-                tableHTML += `<input type="number" class="local-ip-port-input" placeholder="Port" value="${escapeHtml(savedPort)}" data-rrset-id="${rrsetId}" data-zone-id="${zoneId}" min="1" max="65535" style="width: 100px;" oninput="debouncePortInput('${zoneId}', '${rrsetId}');">`;
+                tableHTML += `<input type="number" class="local-ip-port-input" placeholder="Port" value="${escapeHtml(savedPort)}" data-rrset-id="${rrsetId}" data-zone-id="${zoneId}" min="1" max="65535" style="width: 100px;" onchange="debouncePortInput('${zoneId}', '${rrsetId}');">`;
             }
             tableHTML += '</td>';
             
@@ -2539,9 +2539,20 @@ function showToast(message, type = 'info') {
         toast.textContent = message;
         toast.className = 'toast show ' + type;
         
-        setTimeout(() => {
+        // Clear any existing timeout
+        if (toast._toastTimeout) {
+            clearTimeout(toast._toastTimeout);
+        }
+        
+        // Hide toast after 3 seconds (3000ms) + animation time (300ms) = 3300ms total
+        // This ensures the banner is fully visible for 3 seconds after animation completes
+        toast._toastTimeout = setTimeout(() => {
             toast.classList.remove('show');
-        }, 3000);
+            // Wait for animation to complete before hiding
+            setTimeout(() => {
+                toast.textContent = '';
+            }, 300);
+        }, 3300);
     }
 }
 
