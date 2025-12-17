@@ -3619,18 +3619,6 @@ async function loadPeerSyncConfig() {
             }
         });
         
-        // Get own config hash first
-        let ownConfigHash = null;
-        try {
-            const ownStatusResponse = await fetch('/api/v1/sync/config-status');
-            if (ownStatusResponse.ok) {
-                const ownStatus = await ownStatusResponse.json();
-                ownConfigHash = ownStatus.config_hash;
-            }
-        } catch (e) {
-            console.warn('Failed to get own config hash:', e);
-        }
-        
         // Load config status and latency for all peers (async, non-blocking)
         const peerStatusPromises = Array.from(peerMap.keys()).map(async (peerAddress) => {
             const peerIp = peerAddress.split(':')[0];
@@ -3683,9 +3671,8 @@ async function loadPeerSyncConfig() {
                 const status = statusMap.get(peerData.ip);
                 const statusDiv = document.getElementById(`peerStatus_${peerData.ip}`);
                 if (statusDiv && status) {
-                    const configAge = status.configStatus ? calculateConfigAge(status.configStatus.timestamp) : null;
-                    const hashMatch = status.configStatus && ownConfigHash && status.configStatus.config_hash === ownConfigHash;
-                    const statusHtml = buildPeerStatusHtml(status, configAge, hashMatch);
+                    // Only show timestamp (modification date) and latency
+                    const statusHtml = buildPeerStatusHtml(status);
                     statusDiv.innerHTML = statusHtml;
                 }
             });
@@ -4324,34 +4311,18 @@ function calculateConfigAge(timestampStr) {
 }
 
 // Build peer status HTML
-function buildPeerStatusHtml(status, configAge, hashMatch) {
-    const statusBadge = hashMatch ? 
-        '<span style="background-color: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;">✓ Up to date</span>' :
-        '<span style="background-color: #ff9800; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;">⚠ Config differs</span>';
-    
-    const hashStatus = status.configStatus ? 
-        (hashMatch ? 
-            `<span style="color: #4CAF50;">${status.configStatus.config_hash} (matches) ✓</span>` :
-            `<span style="color: #f44336;">${status.configStatus.config_hash} (differs) ✗</span>`) :
-        '<span style="color: #666;">N/A</span>';
+function buildPeerStatusHtml(status) {
+    // Only show timestamp (modification date) - this is what changes when config is updated
+    const timestampHtml = status.configStatus && status.configStatus.timestamp ? 
+        `<div style="margin-top: 5px;"><strong>Last Modified:</strong> ${status.configStatus.timestamp}</div>` :
+        '<div style="margin-top: 5px;"><strong>Last Modified:</strong> <span style="color: #666;">N/A</span></div>';
     
     const latencyHtml = status.latency !== null ? 
         `<div style="margin-top: 5px;"><strong>Latency:</strong> ${status.latency}ms</div>` :
         '<div style="margin-top: 5px;"><strong>Latency:</strong> <span style="color: #666;">N/A</span></div>';
     
-    const configAgeHtml = configAge ? 
-        `<div style="margin-top: 5px;"><strong>Config Age:</strong> ${configAge}</div>` :
-        '<div style="margin-top: 5px;"><strong>Config Age:</strong> <span style="color: #666;">N/A</span></div>';
-    
-    const timestampHtml = status.configStatus && status.configStatus.timestamp ? 
-        `<div style="margin-top: 5px;"><strong>Config Timestamp:</strong> ${status.configStatus.timestamp}</div>` :
-        '<div style="margin-top: 5px;"><strong>Config Timestamp:</strong> <span style="color: #666;">N/A</span></div>';
-    
     return `
         <div style="margin-bottom: 10px;">
-            <div style="margin-bottom: 5px;"><strong>Status:</strong> ${statusBadge}</div>
-            <div style="margin-top: 5px;"><strong>Config Hash:</strong> ${hashStatus}</div>
-            ${configAgeHtml}
             ${timestampHtml}
             ${latencyHtml}
         </div>
