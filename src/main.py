@@ -84,6 +84,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Failed to initialize audit log: {e}")
     
+    # Startup: Start peer-sync service if enabled
+    try:
+        peer_sync = get_peer_sync()
+        if peer_sync._enabled:
+            await peer_sync.start()
+            logger.info("Peer-Sync service started on application startup")
+        else:
+            logger.info("Peer-Sync service is disabled")
+    except Exception as e:
+        logger.error(f"Failed to start peer-sync service: {e}")
+    
     yield
     
     # Shutdown: Stop auto-update service
