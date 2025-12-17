@@ -26,7 +26,7 @@ who need reliable DNS IP automation without relying on external SaaS services.
 - IP address handling:
   - Manual IP assignment
   - Automatic public IP detection
-  - Local/internal IP mapping
+  - Local/internal IP mapping (Monitor IP) with configurable port for reachability checks
   - IP validation and consistency checks
 
 ---
@@ -40,9 +40,11 @@ who need reliable DNS IP automation without relying on external SaaS services.
   - DNS updates only on actual IP changes
   - Support for multiple Hetzner API tokens
   - Error handling with retry and backoff mechanisms
-- Local IP monitoring:
-  - Continuous reachability checks
+- Local IP monitoring (Monitor IP):
+  - Continuous reachability checks on configurable ports (default: 80)
+  - Support for custom ports (e.g., 22 for SSH, 8000 for web services)
   - Automatic DNS updates when reachability changes
+  - TCP connection-based health checks
 
 ---
 

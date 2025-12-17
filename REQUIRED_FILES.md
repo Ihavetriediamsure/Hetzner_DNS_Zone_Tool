@@ -90,15 +90,27 @@ The application uses the following priority order for file storage:
 - **Path (Docker):** `/config/local_ips.yaml` (or via `LOCAL_IP_STORAGE_PATH`)
 - **Path (Local):** `~/.hetzner-dns/local_ips.yaml` (or via `LOCAL_IP_STORAGE_PATH`)
 - **Environment Variable:** `LOCAL_IP_STORAGE_PATH`
-- **Description:** Stores local IP addresses and DNS record-related metadata
+- **Description:** Stores local IP addresses (Monitor IPs) and DNS record-related metadata
 - **Contents:**
-  - Local IP addresses per zone/record
+  - Local IP addresses (Monitor IPs) per zone/record
+  - Port numbers for Monitor IP reachability checks (optional, default: 80)
   - Auto-update settings (enabled/disabled)
   - TTL values
   - Comments
   - IP monitoring status
 - **Created:** When a record is configured for the first time
 - **Optional:** Yes (auto-created when needed)
+- **Format Example:**
+  ```yaml
+  local_ips:
+    "zone_id:rrset_id":
+      zone_id: "example-zone-id"
+      rrset_id: "example.com/A"
+      local_ip: "192.168.130.141"
+      port: 8000  # Optional: Port for reachability checks (default: 80)
+      auto_update_enabled: true
+      ttl: 3600
+  ```
 
 #### `auto_update.yaml`
 
