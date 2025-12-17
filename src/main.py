@@ -55,6 +55,8 @@ from typing import Optional, List, Dict
 import logging
 import httpx
 import asyncio
+import yaml
+import hashlib
 
 # Configure logging
 logging.basicConfig(
@@ -74,6 +76,24 @@ async def trigger_auto_sync_if_enabled():
             logger.debug("Auto-sync triggered")
     except Exception as e:
         logger.warning(f"Failed to trigger auto-sync: {e}")
+
+async def trigger_auto_sync_with_result(timeout: float = 2.0):
+    """Trigger auto-sync if enabled and wait for result (with timeout)"""
+    try:
+        peer_sync = get_peer_sync()
+        if peer_sync._enabled and peer_sync.is_auto_sync_enabled():
+            # Trigger sync and wait for result with timeout
+            sync_task = peer_sync.sync_with_all_peers()
+            try:
+                result = await asyncio.wait_for(sync_task, timeout=timeout)
+                return result
+            except asyncio.TimeoutError:
+                logger.debug(f"Auto-sync timeout after {timeout}s")
+                return None
+        return None
+    except Exception as e:
+        logger.warning(f"Failed to trigger auto-sync: {e}")
+        return None
 
 
 @asynccontextmanager
@@ -2860,6 +2880,22 @@ async def trigger_peer_sync(request: Request, sync_request: PeerSyncSyncNowReque
         raise HTTPException(status_code=500, detail=f"Error triggering peer-sync: {str(e)}")
 
 
+@app.post("/api/v1/peer-sync/auto-sync")
+async def trigger_auto_sync_endpoint(request: Request):
+    """Trigger auto-sync with result (max 2s timeout)"""
+    if not request.session.get("authenticated", False):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        result = await trigger_auto_sync_with_result(timeout=2.0)
+        if result is None:
+            return {"success": False, "message": "Auto-sync timeout or not enabled", "timeout": True}
+        return {"success": True, "result": result}
+    except Exception as e:
+        logger.error(f"Error triggering auto-sync: {e}")
+        return {"success": False, "message": str(e), "timeout": False}
+
+
 @app.post("/api/v1/peer-sync/test-connection")
 async def test_peer_connection(request: Request, test_request: PeerSyncTestConnectionRequest):
     """Test connection to a peer"""
@@ -3109,6 +3145,95 @@ async def receive_sync_local_ips(request: Request):
     except Exception as e:
         logger.error(f"Error receiving sync local-ips: {e}")
         raise HTTPException(status_code=500, detail=f"Error receiving sync local-ips: {str(e)}")
+
+
+@app.get("/api/v1/sync/config-status")
+async def get_config_status(request: Request):
+    """Get config status (generation + hash) - Peer-to-Peer endpoint"""
+    # Verify peer signature first
+    try:
+        peer_x25519_pub, peer_ip = await verify_peer_signature(request)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Peer authentication error in get_config_status: {e}")
+        raise HTTPException(status_code=403, detail="Peer authentication failed")
+    
+    try:
+        import hashlib
+        from datetime import datetime
+        
+        storage = get_local_ip_storage()
+        local_data = storage._load_storage()
+        local_gen = local_data.get('generation', {})
+        
+        # Calculate hash of config content (local_ips.yaml)
+        # Serialize the config to get a consistent representation
+        config_str = yaml.dump(local_data, default_flow_style=False, allow_unicode=True, sort_keys=True)
+        config_hash = hashlib.sha256(config_str.encode('utf-8')).hexdigest()[:8]  # First 8 chars
+        
+        # Get file modification time
+        storage_path = storage.storage_path
+        if storage_path.exists():
+            file_mtime = storage_path.stat().st_mtime
+            timestamp_str = datetime.fromtimestamp(file_mtime).strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            timestamp_str = None
+        
+        return {
+            "generation": local_gen,
+            "config_hash": config_hash,
+            "timestamp": timestamp_str
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting config status: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting config status: {str(e)}")
+
+
+@app.get("/api/v1/peer-sync/get-peer-config-status")
+async def get_peer_config_status(request: Request, peer: str):
+    """Get config status from a specific peer (for UI)"""
+    if not request.session.get("authenticated", False):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        from src.peer_sync import get_peer_sync
+        
+        peer_sync = get_peer_sync()
+        peer_ip = peer.split(':')[0]
+        
+        # Check if we have peer's public key
+        if peer_ip not in peer_sync.peer_x25519_keys:
+            raise HTTPException(status_code=400, detail=f"Peer {peer_ip} not configured")
+        
+        # Use peer_sync to query config status (it handles signing)
+        client = await peer_sync._get_client()
+        our_public_key_b64 = peer_sync.get_public_key_base64()
+        
+        # Sign request
+        url_path = "/api/v1/sync/config-status"
+        request_data = f"GET:{url_path}".encode()
+        signature = peer_sync._sign_data(request_data)
+        
+        headers = {
+            "X-Peer-Public-Key": our_public_key_b64,
+            "X-Peer-Signature": signature
+        }
+        
+        url = f"http://{peer}{url_path}"
+        response = await client.get(url, headers=headers)
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            raise HTTPException(status_code=response.status_code, detail=f"Failed to get config status from peer: {response.status_code}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting peer config status: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting peer config status: {str(e)}")
 
 
 if __name__ == "__main__":

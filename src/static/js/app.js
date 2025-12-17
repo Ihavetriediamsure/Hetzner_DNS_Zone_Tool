@@ -1079,8 +1079,8 @@ async function saveLocalIPWithPort(zoneId, rrsetId, localIP = null, port = null)
         
         showToast('Monitor IP saved', 'success');
         
-        // Check auto-sync and warn if disabled
-        await checkAutoSyncAndWarn();
+        // Trigger auto-sync if enabled (with banner)
+        await triggerAutoSyncWithBanner();
         
         // Restart automatic health checks
         startAutomaticHealthChecks(zoneId);
@@ -3591,6 +3591,78 @@ async function loadPeerSyncConfig() {
             }
         });
         
+        // Get own config hash first
+        let ownConfigHash = null;
+        try {
+            const ownStatusResponse = await fetch('/api/v1/sync/config-status');
+            if (ownStatusResponse.ok) {
+                const ownStatus = await ownStatusResponse.json();
+                ownConfigHash = ownStatus.config_hash;
+            }
+        } catch (e) {
+            console.warn('Failed to get own config hash:', e);
+        }
+        
+        // Load config status and latency for all peers (async, non-blocking)
+        const peerStatusPromises = Array.from(peerMap.keys()).map(async (peerAddress) => {
+            const peerIp = peerAddress.split(':')[0];
+            try {
+                // Get config status from peer (via our backend which handles signing)
+                const statusResponse = await fetch(`/api/v1/peer-sync/get-peer-config-status?peer=${encodeURIComponent(peerAddress)}`, {
+                    method: 'GET'
+                });
+                
+                // Test connection latency
+                const latencyStart = performance.now();
+                const testResponse = await fetch(`/api/v1/peer-sync/test-connection`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ peer: peerAddress })
+                });
+                const latency = Math.round(performance.now() - latencyStart);
+                
+                let configStatus = null;
+                if (statusResponse.ok) {
+                    configStatus = await statusResponse.json();
+                }
+                
+                return {
+                    peerIp,
+                    peerAddress,
+                    configStatus,
+                    latency: testResponse.ok ? latency : null
+                };
+            } catch (e) {
+                console.warn(`Failed to get status for peer ${peerAddress}:`, e);
+                return {
+                    peerIp,
+                    peerAddress,
+                    configStatus: null,
+                    latency: null
+                };
+            }
+        });
+        
+        // Wait for all status requests (non-blocking, but update UI when ready)
+        Promise.all(peerStatusPromises).then(peerStatuses => {
+            const statusMap = new Map();
+            peerStatuses.forEach(status => {
+                statusMap.set(status.peerIp, status);
+            });
+            
+            // Update UI with status info
+            peerMap.forEach((peerData, peerAddress) => {
+                const status = statusMap.get(peerData.ip);
+                const statusDiv = document.getElementById(`peerStatus_${peerData.ip}`);
+                if (statusDiv && status) {
+                    const configAge = status.configStatus ? calculateConfigAge(status.configStatus.timestamp) : null;
+                    const hashMatch = status.configStatus && ownConfigHash && status.configStatus.config_hash === ownConfigHash;
+                    const statusHtml = buildPeerStatusHtml(status, configAge, hashMatch);
+                    statusDiv.innerHTML = statusHtml;
+                }
+            });
+        });
+        
         // Display all peers with editable fields
         peerMap.forEach((peerData, peerAddress) => {
             const div = document.createElement('div');
@@ -3608,6 +3680,9 @@ async function loadPeerSyncConfig() {
                 <div style="margin-bottom: 10px;">
                     <label style="display: block; margin-bottom: 5px; font-weight: bold;">Public Key:</label>
                     <input type="text" id="peerPublicKey_${peerData.ip}" value="${peerData.public_key}" data-original="${peerData.public_key}" placeholder="Enter public key (32 bytes Base64)" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 0.85em;">
+                </div>
+                <div id="peerStatus_${peerData.ip}" style="margin-bottom: 10px; padding: 10px; background-color: #f5f5f5; border-radius: 4px;">
+                    <div style="color: #666; font-size: 0.9em;">Loading status...</div>
                 </div>
                 <div style="display: flex; gap: 10px; justify-content: flex-end;">
                     <button class="btn btn-primary" onclick="savePeerNode('${peerData.ip}')">Save</button>
@@ -3983,10 +4058,15 @@ async function loadPeerSyncStatus() {
             tbody.appendChild(row);
         });
         
-        // Update sync events table
+        // Update sync events table (sort descending by timestamp - newest first)
         const eventsTbody = document.getElementById('syncEventsTableBody');
         eventsTbody.innerHTML = '';
-        status.recent_events.forEach(event => {
+        const sortedEvents = [...status.recent_events].sort((a, b) => {
+            const timeA = new Date(a.timestamp).getTime();
+            const timeB = new Date(b.timestamp).getTime();
+            return timeB - timeA; // Descending (newest first)
+        });
+        sortedEvents.forEach(event => {
             const row = document.createElement('tr');
             const statusBadge = event.status === 'success' ? 
                 '<span style="background-color: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px;">Success</span>' :
@@ -4063,6 +4143,56 @@ async function checkAutoSyncAndWarn() {
     }
 }
 
+// Trigger auto-sync with banner (max 2s timeout)
+async function triggerAutoSyncWithBanner() {
+    const enabled = await isAutoSyncEnabled();
+    if (!enabled) {
+        // Show warning if disabled
+        alert('Automatic sync not enabled - attention');
+        return;
+    }
+    
+    try {
+        // Show "Sending..." banner immediately
+        showToast('Sending configuration to all peers...', 'info');
+        
+        // Trigger auto-sync with 2s timeout
+        const response = await fetch('/api/v1/peer-sync/auto-sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        if (!response.ok) {
+            showToast('Auto-sync failed', 'error');
+            return;
+        }
+        
+        const result = await response.json();
+        
+        if (result.timeout) {
+            // Timeout - don't show banner, sync is running in background
+            return;
+        }
+        
+        if (result.success && result.result) {
+            const syncResult = result.result;
+            const allSuccessful = syncResult.failed_peers && syncResult.failed_peers.length === 0;
+            if (allSuccessful) {
+                showToast('All peers successfully synchronized', 'success');
+            } else {
+                const syncedCount = syncResult.synced_peers ? syncResult.synced_peers.length : 0;
+                const failedCount = syncResult.failed_peers ? syncResult.failed_peers.length : 0;
+                showToast(`Sync completed: ${syncedCount} peers synced, ${failedCount} failed`, 'warning');
+            }
+        } else {
+            showToast('Auto-sync failed: ' + (result.message || 'Unknown error'), 'error');
+        }
+    } catch (error) {
+        console.error('Error triggering auto-sync:', error);
+        // Don't show error banner if it's just a timeout
+    }
+}
+
 // Test peer connection
 async function testPeerConnection(peer) {
     try {
@@ -4092,6 +4222,54 @@ function copyToClipboard(elementId) {
 
 // Note: addPeerPublicKey, savePeerPublicKey, removePeerPublicKey functions removed
 // Replaced with: addPeerKey, savePeerKey, removePeerKey
+
+// Calculate config age from timestamp
+function calculateConfigAge(timestampStr) {
+    if (!timestampStr) return null;
+    const timestamp = new Date(timestampStr.replace(' ', 'T'));
+    const now = new Date();
+    const diffMs = now - timestamp;
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 1) return 'Up to date';
+    if (diffMins < 60) return `${diffMins} minutes`;
+    const diffHours = Math.floor(diffMins / 60);
+    return `${diffHours} hours`;
+}
+
+// Build peer status HTML
+function buildPeerStatusHtml(status, configAge, hashMatch) {
+    const statusBadge = hashMatch ? 
+        '<span style="background-color: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;">✓ Up to date</span>' :
+        '<span style="background-color: #ff9800; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;">⚠ Config differs</span>';
+    
+    const hashStatus = status.configStatus ? 
+        (hashMatch ? 
+            `<span style="color: #4CAF50;">${status.configStatus.config_hash} (matches) ✓</span>` :
+            `<span style="color: #f44336;">${status.configStatus.config_hash} (differs) ✗</span>`) :
+        '<span style="color: #666;">N/A</span>';
+    
+    const latencyHtml = status.latency !== null ? 
+        `<div style="margin-top: 5px;"><strong>Latency:</strong> ${status.latency}ms</div>` :
+        '<div style="margin-top: 5px;"><strong>Latency:</strong> <span style="color: #666;">N/A</span></div>';
+    
+    const configAgeHtml = configAge ? 
+        `<div style="margin-top: 5px;"><strong>Config Age:</strong> ${configAge}</div>` :
+        '<div style="margin-top: 5px;"><strong>Config Age:</strong> <span style="color: #666;">N/A</span></div>';
+    
+    const timestampHtml = status.configStatus && status.configStatus.timestamp ? 
+        `<div style="margin-top: 5px;"><strong>Config Timestamp:</strong> ${status.configStatus.timestamp}</div>` :
+        '<div style="margin-top: 5px;"><strong>Config Timestamp:</strong> <span style="color: #666;">N/A</span></div>';
+    
+    return `
+        <div style="margin-bottom: 10px;">
+            <div style="margin-bottom: 5px;"><strong>Status:</strong> ${statusBadge}</div>
+            <div style="margin-top: 5px;"><strong>Config Hash:</strong> ${hashStatus}</div>
+            ${configAgeHtml}
+            ${timestampHtml}
+            ${latencyHtml}
+        </div>
+    `;
+}
 
 // Load Peer-Sync config when tab is opened
 document.addEventListener('DOMContentLoaded', function() {
