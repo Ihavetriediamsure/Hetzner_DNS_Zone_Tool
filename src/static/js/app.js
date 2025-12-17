@@ -111,6 +111,8 @@ document.addEventListener('DOMContentLoaded', async function() {
             if (targetTab === 'peer-sync') {
                 loadPeerSyncConfig();
                 loadPeerSyncStatus();
+                // Always load public key when tab is opened
+                loadPeerSyncPublicKeys();
             }
         }
     }
@@ -3607,7 +3609,19 @@ async function loadPeerSyncPublicKeys() {
         if (!response.ok) throw new Error('Failed to load public key');
         const keys = await response.json();
         
-        document.getElementById('peerPublicKey').value = keys.public_key || '';
+        const publicKeyInput = document.getElementById('peerPublicKey');
+        if (publicKeyInput) {
+            publicKeyInput.value = keys.public_key || '';
+        } else {
+            console.warn('peerPublicKey element not found, retrying in 100ms...');
+            // Retry after a short delay if element doesn't exist yet
+            setTimeout(() => {
+                const retryInput = document.getElementById('peerPublicKey');
+                if (retryInput) {
+                    retryInput.value = keys.public_key || '';
+                }
+            }, 100);
+        }
     } catch (error) {
         console.error('Error loading public key:', error);
     }
