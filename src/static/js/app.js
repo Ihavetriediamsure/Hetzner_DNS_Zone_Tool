@@ -3642,9 +3642,16 @@ async function regeneratePeerKey() {
         if (!response.ok) throw new Error('Failed to regenerate key');
         
         const result = await response.json();
+        
+        // Update public key immediately from response if available
+        const publicKeyInput = document.getElementById('peerPublicKey');
+        if (publicKeyInput && result.public_key) {
+            publicKeyInput.value = result.public_key;
+        }
+        
         showToast('Key pair successfully regenerated. Please update the new public key on all other peers!', 'success');
         
-        // Reload public key
+        // Reload public key to ensure it's up to date
         await loadPeerSyncPublicKeys();
     } catch (error) {
         showToast('Error regenerating key: ' + error.message, 'error');
