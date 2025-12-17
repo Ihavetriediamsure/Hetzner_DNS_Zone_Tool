@@ -3192,6 +3192,33 @@ async def get_config_status(request: Request):
         raise HTTPException(status_code=500, detail=f"Error getting config status: {str(e)}")
 
 
+@app.get("/api/v1/peer-sync/own-config-status")
+async def get_own_config_status(request: Request):
+    """Get own config status (Last Modified timestamp) - for authenticated users only"""
+    if not request.session.get("authenticated", False):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        from datetime import datetime
+        
+        storage = get_local_ip_storage()
+        storage_path = storage.storage_path
+        
+        # Get file modification time
+        if storage_path.exists():
+            file_mtime = storage_path.stat().st_mtime
+            timestamp_str = datetime.fromtimestamp(file_mtime).strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            timestamp_str = None
+        
+        return {
+            "timestamp": timestamp_str
+        }
+    except Exception as e:
+        logger.error(f"Error getting own config status: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting own config status: {str(e)}")
+
+
 @app.get("/api/v1/peer-sync/get-peer-config-status")
 async def get_peer_config_status(request: Request, peer: str):
     """Get config status from a specific peer (for UI)"""

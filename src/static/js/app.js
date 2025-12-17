@@ -3736,6 +3736,27 @@ async function loadPeerSyncPublicKeys() {
                 }
             }, 100);
         }
+        
+        // Load own config status (Last Modified timestamp)
+        try {
+            const statusResponse = await fetch('/api/v1/peer-sync/own-config-status');
+            if (statusResponse.ok) {
+                const ownStatus = await statusResponse.json();
+                const ownStatusDiv = document.getElementById('ownPeerStatus');
+                if (ownStatusDiv) {
+                    const timestampHtml = ownStatus.timestamp ? 
+                        `<div style="margin-top: 5px;"><strong>Last Modified:</strong> ${ownStatus.timestamp}</div>` :
+                        '<div style="margin-top: 5px;"><strong>Last Modified:</strong> <span style="color: #666;">N/A</span></div>';
+                    ownStatusDiv.innerHTML = timestampHtml;
+                }
+            }
+        } catch (e) {
+            console.warn('Failed to load own config status:', e);
+            const ownStatusDiv = document.getElementById('ownPeerStatus');
+            if (ownStatusDiv) {
+                ownStatusDiv.innerHTML = '<div style="margin-top: 5px;"><strong>Last Modified:</strong> <span style="color: #666;">N/A</span></div>';
+            }
+        }
     } catch (error) {
         console.error('Error loading public key:', error);
     }
