@@ -25,9 +25,8 @@ class ConfigManager:
     
     def load_config(self) -> Dict[str, Any]:
         """Load configuration from YAML file"""
-        if self._config is not None:
-            return self._config
-        
+        # Always reload from file to ensure we have the latest data
+        # This prevents stale cache issues when config is modified externally
         if self.config_path.exists():
             with open(self.config_path, 'r', encoding='utf-8') as f:
                 self._config = yaml.safe_load(f) or {}
