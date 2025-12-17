@@ -3559,26 +3559,27 @@ async function loadPeerSyncConfig() {
             }
         });
         
-        // Display all peers
+        // Display all peers with editable fields
         peerMap.forEach((peerData, peerAddress) => {
             const div = document.createElement('div');
+            div.id = `peerNode_${peerData.ip}`;
             div.style.cssText = 'border: 1px solid #ddd; padding: 15px; border-radius: 4px; margin-bottom: 10px;';
             div.innerHTML = `
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                    <h4 style="margin: 0;">${peerData.name}</h4>
-                    <button class="btn btn-secondary" onclick="removePeerNode('${peerAddress}')">Remove</button>
-                </div>
                 <div style="margin-bottom: 10px;">
                     <label style="display: block; margin-bottom: 5px; font-weight: bold;">Peer Address (IP:Port):</label>
-                    <input type="text" value="${peerAddress}" readonly style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    <input type="text" id="peerAddress_${peerData.ip}" value="${peerAddress}" data-original="${peerAddress}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
                 </div>
                 <div style="margin-bottom: 10px;">
                     <label style="display: block; margin-bottom: 5px; font-weight: bold;">Peer Name:</label>
-                    <input type="text" id="peerName_${peerData.ip}" value="${peerData.name}" onchange="updatePeerName('${peerData.ip}', this.value)" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    <input type="text" id="peerName_${peerData.ip}" value="${peerData.name}" data-original="${peerData.name}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
                 </div>
-                <div>
+                <div style="margin-bottom: 10px;">
                     <label style="display: block; margin-bottom: 5px; font-weight: bold;">Public Key:</label>
-                    <input type="text" id="peerPublicKey_${peerData.ip}" value="${peerData.public_key}" onchange="updatePeerPublicKey('${peerData.ip}', this.value)" placeholder="Enter public key (32 bytes Base64)" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 0.85em;">
+                    <input type="text" id="peerPublicKey_${peerData.ip}" value="${peerData.public_key}" data-original="${peerData.public_key}" placeholder="Enter public key (32 bytes Base64)" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 0.85em;">
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button class="btn btn-primary" onclick="savePeerNode('${peerData.ip}')">Save</button>
+                    <button class="btn btn-secondary" onclick="removePeerNode('${peerData.ip}')">Remove</button>
                 </div>
             `;
             peerNodesList.appendChild(div);
@@ -3669,7 +3670,7 @@ async function savePeerSyncConfig() {
     }
 }
 
-// Add peer node
+// Add peer node (directly add with empty fields, user can fill and save)
 async function addPeerNode() {
     const input = document.getElementById('newPeerNodeInput');
     const peerAddress = input.value.trim();
@@ -3679,96 +3680,198 @@ async function addPeerNode() {
         return;
     }
     
-    const peerName = prompt('Enter Peer Name (optional):') || peerAddress.split(':')[0];
-    const peerPublicKey = prompt('Enter Peer Public Key (32 bytes Base64, optional - can be added later):') || '';
+    // Validate format (IP:Port)
+    if (!peerAddress.includes(':')) {
+        showToast('Invalid format. Please use IP:Port (e.g., 10.0.0.2:8412)', 'error');
+        return;
+    }
     
-    // Basic validation (32 bytes = 44 Base64 chars)
+    const peerIp = peerAddress.split(':')[0];
+    const peerNodesList = document.getElementById('peerNodesList');
+    
+    // Check if peer already exists
+    const existingPeer = document.getElementById(`peerNode_${peerIp}`);
+    if (existingPeer) {
+        showToast('Peer node already exists', 'error');
+        return;
+    }
+    
+    // Add new peer directly to UI with empty fields
+    const div = document.createElement('div');
+    div.id = `peerNode_${peerIp}`;
+    div.style.cssText = 'border: 1px solid #ddd; padding: 15px; border-radius: 4px; margin-bottom: 10px;';
+    div.innerHTML = `
+        <div style="margin-bottom: 10px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Peer Address (IP:Port):</label>
+            <input type="text" id="peerAddress_${peerIp}" value="${peerAddress}" data-original="${peerAddress}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+        </div>
+        <div style="margin-bottom: 10px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Peer Name:</label>
+            <input type="text" id="peerName_${peerIp}" value="${peerIp}" data-original="${peerIp}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+        </div>
+        <div style="margin-bottom: 10px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Public Key:</label>
+            <input type="text" id="peerPublicKey_${peerIp}" value="" data-original="" placeholder="Enter public key (32 bytes Base64)" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 0.85em;">
+        </div>
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+            <button class="btn btn-primary" onclick="savePeerNode('${peerIp}')">Save</button>
+            <button class="btn btn-secondary" onclick="removePeerNode('${peerIp}')">Remove</button>
+        </div>
+    `;
+    peerNodesList.appendChild(div);
+    input.value = '';
+    showToast('Peer node added. Please fill in the details and click Save.', 'info');
+}
+
+// Save peer node (update or create)
+async function savePeerNode(peerIp) {
+    const addressInput = document.getElementById(`peerAddress_${peerIp}`);
+    const nameInput = document.getElementById(`peerName_${peerIp}`);
+    const keyInput = document.getElementById(`peerPublicKey_${peerIp}`);
+    
+    if (!addressInput || !nameInput || !keyInput) {
+        showToast('Peer node not found', 'error');
+        return;
+    }
+    
+    const peerAddress = addressInput.value.trim();
+    const peerName = nameInput.value.trim();
+    const peerPublicKey = keyInput.value.trim();
+    
+    if (!peerAddress) {
+        showToast('Peer address is required', 'error');
+        return;
+    }
+    
+    // Validate format (IP:Port)
+    if (!peerAddress.includes(':')) {
+        showToast('Invalid format. Please use IP:Port (e.g., 10.0.0.2:8412)', 'error');
+        return;
+    }
+    
+    // Validate public key if provided
     if (peerPublicKey && peerPublicKey.length !== 44) {
-        showToast('Invalid public key format. Should be 32 bytes Base64 (44 characters). Peer node added without key.', 'warning');
+        showToast('Invalid public key format. Should be 32 bytes Base64 (44 characters).', 'error');
+        return;
     }
     
     try {
         const currentResponse = await fetch('/api/v1/peer-sync/config');
         const currentConfig = await currentResponse.json();
         
-        if (currentConfig.peer_nodes.includes(peerAddress)) {
-            showToast('Peer node already exists', 'error');
-            return;
+        const newPeerIp = peerAddress.split(':')[0];
+        const originalAddress = addressInput.getAttribute('data-original');
+        const originalIp = originalAddress ? originalAddress.split(':')[0] : peerIp;
+        
+        // Remove old peer if IP changed
+        let peerNodes = [...currentConfig.peer_nodes];
+        if (originalAddress && originalAddress !== peerAddress) {
+            peerNodes = peerNodes.filter(p => p !== originalAddress);
         }
         
-        const peerIp = peerAddress.split(':')[0];
-        const peerNodes = [...currentConfig.peer_nodes, peerAddress];
+        // Add new peer address if not exists
+        if (!peerNodes.includes(peerAddress)) {
+            peerNodes.push(peerAddress);
+        }
+        
         const peerPublicKeys = { ...currentConfig.peer_public_keys };
         
-        // Add/update peer public key
-        if (peerPublicKey) {
-            peerPublicKeys[peerIp] = {
-                name: peerName,
-                public_key: peerPublicKey
-            };
-        } else if (!peerPublicKeys[peerIp]) {
-            // Create entry without public key if it doesn't exist
-            peerPublicKeys[peerIp] = {
-                name: peerName,
-                public_key: ''
-            };
-        } else {
-            // Update name if public key already exists
-            peerPublicKeys[peerIp].name = peerName;
+        // Remove old IP entry if IP changed
+        if (originalIp !== newPeerIp && peerPublicKeys[originalIp]) {
+            delete peerPublicKeys[originalIp];
         }
         
-        const config = {
-            ...currentConfig,
-            peer_nodes: peerNodes,
-            peer_public_keys: peerPublicKeys
+        // Add/update peer public key
+        peerPublicKeys[newPeerIp] = {
+            name: peerName || newPeerIp,
+            public_key: peerPublicKey || ''
         };
         
         const response = await fetch('/api/v1/peer-sync/config', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(config)
+            body: JSON.stringify({
+                enabled: currentConfig.enabled,
+                interval: currentConfig.interval,
+                timeout: currentConfig.timeout,
+                max_retries: currentConfig.max_retries,
+                rate_limit: currentConfig.rate_limit,
+                ntp_enabled: currentConfig.ntp_enabled,
+                peer_nodes: peerNodes,
+                peer_public_keys: peerPublicKeys
+            })
         });
         
-        if (!response.ok) throw new Error('Failed to add peer node');
+        if (!response.ok) throw new Error('Failed to save peer node');
         
-        input.value = '';
-        showToast('Peer node added', 'success');
+        // Update data-original attributes
+        addressInput.setAttribute('data-original', peerAddress);
+        nameInput.setAttribute('data-original', peerName);
+        keyInput.setAttribute('data-original', peerPublicKey);
+        
+        // Update div ID if IP changed
+        if (originalIp !== newPeerIp) {
+            const div = document.getElementById(`peerNode_${originalIp}`);
+            if (div) {
+                div.id = `peerNode_${newPeerIp}`;
+                addressInput.id = `peerAddress_${newPeerIp}`;
+                nameInput.id = `peerName_${newPeerIp}`;
+                keyInput.id = `peerPublicKey_${newPeerIp}`;
+                // Update onclick handlers
+                const saveBtn = div.querySelector('button.btn-primary');
+                const removeBtn = div.querySelector('button.btn-secondary');
+                if (saveBtn) saveBtn.setAttribute('onclick', `savePeerNode('${newPeerIp}')`);
+                if (removeBtn) removeBtn.setAttribute('onclick', `removePeerNode('${newPeerIp}')`);
+            }
+        }
+        
+        showToast('Peer node saved successfully', 'success');
         await loadPeerSyncConfig();
     } catch (error) {
-        showToast('Error adding peer node: ' + error.message, 'error');
+        showToast('Error saving peer node: ' + error.message, 'error');
     }
 }
 
-// Remove peer node
-async function removePeerNode(peerAddress) {
+// Remove peer node (with confirmation)
+async function removePeerNode(peerIp) {
+    // Confirmation popup
+    if (!confirm(`Do you really want to remove peer node ${peerIp}?`)) {
+        return;
+    }
+    
     try {
+        const addressInput = document.getElementById(`peerAddress_${peerIp}`);
+        const peerAddress = addressInput ? addressInput.value.trim() : `${peerIp}:8412`;
+        
         const currentResponse = await fetch('/api/v1/peer-sync/config');
         const currentConfig = await currentResponse.json();
         
-        const peerNodes = currentConfig.peer_nodes.filter(p => p !== peerAddress);
-        const peerIp = peerAddress.split(':')[0];
+        const peerNodes = currentConfig.peer_nodes.filter(p => {
+            const peerIpFromNode = p.split(':')[0];
+            return peerIpFromNode !== peerIp;
+        });
         
-        // Also remove peer public key if exists
         const peerPublicKeys = { ...currentConfig.peer_public_keys };
-        if (peerPublicKeys[peerIp]) {
-            delete peerPublicKeys[peerIp];
-        }
-        
-        const config = {
-            ...currentConfig,
-            peer_nodes: peerNodes,
-            peer_public_keys: peerPublicKeys
-        };
+        delete peerPublicKeys[peerIp];
         
         const response = await fetch('/api/v1/peer-sync/config', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(config)
+            body: JSON.stringify({
+                enabled: currentConfig.enabled,
+                interval: currentConfig.interval,
+                timeout: currentConfig.timeout,
+                max_retries: currentConfig.max_retries,
+                rate_limit: currentConfig.rate_limit,
+                ntp_enabled: currentConfig.ntp_enabled,
+                peer_nodes: peerNodes,
+                peer_public_keys: peerPublicKeys
+            })
         });
         
         if (!response.ok) throw new Error('Failed to remove peer node');
         
-        showToast('Peer node removed', 'success');
+        showToast('Peer node removed successfully', 'success');
         await loadPeerSyncConfig();
     } catch (error) {
         showToast('Error removing peer node: ' + error.message, 'error');
@@ -3916,3 +4019,4 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 });
+
