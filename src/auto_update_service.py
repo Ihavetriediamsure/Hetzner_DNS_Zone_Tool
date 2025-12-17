@@ -8,6 +8,8 @@ from src.hetzner_client import HetznerDNSClient
 from src.local_ip_storage import get_local_ip_storage
 from src.ip_detector import get_ip_detector
 from src.internal_ip_monitor import get_internal_ip_monitor
+from src.split_brain_protection import get_split_brain_protection
+from src.audit_log import get_audit_log, AuditAction
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +41,9 @@ class AutoUpdateService:
         }
         
         try:
+            # Get split-brain protection instance
+            split_brain_protection = get_split_brain_protection()
+            
             # Get current public IP - always use automatic detection for auto-update
             # (ignore manual IP setting, as auto-update should use the real server IP)
             detector = get_ip_detector()
@@ -170,6 +175,38 @@ class AutoUpdateService:
                             
                             # Update if needed
                             if needs_update:
+                                # Split-Brain-Schutz: Prüfe andere Peers (nur wenn Peer-Sync aktiviert UND Monitor IP konfiguriert)
+                                if should_update_ip and split_brain_protection.is_enabled() and local_ip:
+                                    monitor_port = local_settings.get("port", 80)
+                                    split_brain_check = await split_brain_protection.check_split_brain(
+                                        monitor_ip=local_ip,
+                                        port=monitor_port
+                                    )
+                                    
+                                    if split_brain_check.get("split_brain_detected", False):
+                                        logger.warning(
+                                            f"Split-Brain detected for {rrset.id}: "
+                                            f"Monitor IP {local_ip} is alive on multiple peers. "
+                                            f"Skipping update to prevent endless loop."
+                                        )
+                                        # Log to audit log
+                                        audit_log = get_audit_log()
+                                        audit_log.log(
+                                            action=AuditAction.IP_UPDATE_SPLIT_BRAIN_DETECTED,
+                                            username="system",
+                                            success=False,
+                                            details={
+                                                "zone_id": zone.id,
+                                                "rrset_id": rrset.id,
+                                                "monitor_ip": local_ip,
+                                                "port": monitor_port,
+                                                "alive_peers": split_brain_check.get("alive_peers", []),
+                                                "reason": split_brain_check.get("reason", ""),
+                                                "source": "auto_update"
+                                            }
+                                        )
+                                        results["skipped"] += 1
+                                        continue  # Skip update
                                 try:
                                     # Double-check: Only update if values are actually different
                                     # This prevents unnecessary API calls

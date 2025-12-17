@@ -18,6 +18,7 @@
             <button class="tab-btn" data-tab="config">API Token Configuration</button>
             <button class="tab-btn" data-tab="security">Security</button>
             <button class="tab-btn" data-tab="audit-logs">Audit Logs</button>
+            <button class="tab-btn" data-tab="peer-sync">Peer Sync</button>
         </nav>
 
         <!-- DNS Zone Tab -->
@@ -57,6 +58,9 @@
         <!-- Configuration Tab -->
         <div id="configTab" class="tab-content">
             <h2>API Token Configuration</h2>
+            <p style="color: #666; font-size: 0.9em; margin-bottom: 20px; padding: 15px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
+                <strong>⚠️ Important:</strong> API tokens must be manually configured on each peer. API token keys are not synchronized between peers for security reasons.
+            </p>
             
             <!-- Machine Name Section -->
             <div class="config-section" style="border: 1px solid #ddd; padding: 20px; margin-top: 20px; border-radius: 4px;">
@@ -344,6 +348,14 @@
                                 <input type="checkbox" class="smtp-event-checkbox" value="monitor_ip_offline">
                                 <span>Monitor IP Offline</span>
                             </label>
+                            <label style="display: flex; align-items: center; gap: 5px;">
+                                <input type="checkbox" class="smtp-event-checkbox" value="monitor_ip_online">
+                                <span>Monitor IP Online</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 5px;">
+                                <input type="checkbox" class="smtp-event-checkbox" value="monitor_ip_status_check">
+                                <span>Monitor IP Status Check</span>
+                            </label>
                         </div>
                     </div>
                     
@@ -355,6 +367,33 @@
         <!-- Audit Logs Tab -->
         <div id="audit-logsTab" class="tab-content">
             <h2>Audit Logs</h2>
+            
+            <!-- Log Rotation Settings Section -->
+            <div class="config-section" style="border: 1px solid #ddd; padding: 20px; margin-top: 20px; border-radius: 4px;">
+                <h3>Log Rotation Settings</h3>
+                <p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">Configure automatic log file rotation to manage disk space.</p>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 15px;">
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Max File Size (MB):</label>
+                        <input type="number" id="auditLogMaxSizeMB" min="1" max="1000" step="1" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        <small style="color: #666; font-size: 0.85em;">Maximum size before rotation (default: 10 MB)</small>
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Max Age (Days):</label>
+                        <input type="number" id="auditLogMaxAgeDays" min="1" max="365" step="1" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        <small style="color: #666; font-size: 0.85em;">Maximum age before rotation (default: 30 days)</small>
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Rotation Check Interval (Hours):</label>
+                        <input type="number" id="auditLogRotationIntervalHours" min="1" max="168" step="1" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        <small style="color: #666; font-size: 0.85em;">How often to check for rotation (default: 24 hours)</small>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button id="saveAuditLogSettingsBtn" class="btn btn-primary" onclick="saveAuditLogSettings()">Save Settings</button>
+                    <button id="loadAuditLogSettingsBtn" class="btn btn-secondary" onclick="loadAuditLogSettings()">Reload</button>
+                </div>
+            </div>
             
             <!-- Filters Section -->
             <div class="config-section" style="border: 1px solid #ddd; padding: 20px; margin-top: 20px; border-radius: 4px;">
@@ -417,6 +456,134 @@
                 <h3>Log Entries</h3>
                 <div id="auditLogsDisplay" style="margin-top: 15px;">
                     <p style="color: #666;">Loading logs...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Peer Sync Tab -->
+        <div id="peer-syncTab" class="tab-content">
+            <h2>Peer Sync Configuration</h2>
+            
+            <!-- Sync Settings -->
+            <div class="config-section" style="border: 1px solid #ddd; padding: 20px; margin-top: 20px; border-radius: 4px;">
+                <h3>Sync Settings</h3>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="peerSyncEnabled" onchange="togglePeerSync()">
+                        <span>Peer Sync aktivieren</span>
+                    </label>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Sync-Intervall (Sekunden):</label>
+                        <input type="number" id="peerSyncInterval" min="60" max="3600" value="300" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Request Timeout (Sekunden):</label>
+                        <input type="number" id="peerSyncTimeout" min="1" max="30" value="5" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Max Retries:</label>
+                        <input type="number" id="peerSyncMaxRetries" min="0" max="10" value="3" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Rate Limit (req/sec):</label>
+                        <input type="number" id="peerSyncRateLimit" min="0.1" max="10" step="0.1" value="1" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    </div>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="peerSyncNtpEnabled" onchange="savePeerSyncConfig()">
+                        <span>NTP-Synchronisation aktivieren</span>
+                    </label>
+                </div>
+                <button class="btn btn-primary" onclick="savePeerSyncConfig()">Save Settings</button>
+            </div>
+
+            <!-- Own Public Key Section -->
+            <div class="config-section" style="border: 1px solid #ddd; padding: 20px; margin-top: 20px; border-radius: 4px;">
+                <h3>Own Public Key</h3>
+                <p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">This public key must be configured on other peers. It is used for authentication and encryption (via ECDH). The public key can be shared insecurely.</p>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Public Key:</label>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="peerPublicKey" readonly style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 0.85em;">
+                        <button class="btn btn-secondary" onclick="copyToClipboard('peerPublicKey')">Copy</button>
+                    </div>
+                </div>
+                <div style="margin-top: 15px; padding: 15px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
+                    <p style="margin: 0; color: #856404; font-size: 0.9em;">
+                        <strong>⚠️ Important:</strong> If you regenerate the private key, you must update the new public key on all other peers!
+                    </p>
+                    <button class="btn btn-warning" onclick="regeneratePeerKey()" style="margin-top: 10px;">Generate New Private Key</button>
+                </div>
+            </div>
+
+            <!-- Peer Nodes & Keys Configuration -->
+            <div class="config-section" style="border: 1px solid #ddd; padding: 20px; margin-top: 20px; border-radius: 4px;">
+                <h3>Peer Nodes & Keys</h3>
+                <p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">Configure peer nodes (IP:Port) and their 32-byte keys (Base64)</p>
+                <div id="peerNodesList" style="margin-bottom: 15px;"></div>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="newPeerNodeInput" placeholder="10.0.0.2:8412" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; max-width: 300px;">
+                    <button class="btn btn-primary" onclick="addPeerNode()">Add Peer</button>
+                </div>
+            </div>
+
+            <!-- Sync Status & Statistics -->
+            <div class="config-section" style="border: 1px solid #ddd; padding: 20px; margin-top: 20px; border-radius: 4px;">
+                <h3>Sync Status & Statistics</h3>
+                
+                <!-- Overview -->
+                <div id="peerSyncOverview" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                    <!-- Will be populated by JavaScript -->
+                </div>
+
+                <!-- Peer Status Table -->
+                <div style="margin-bottom: 20px;">
+                    <h4>Peer-Status</h4>
+                    <table id="peerStatusTable" style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background-color: #f5f5f5;">
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Name</th>
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">IP:Port</th>
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Status</th>
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Last Sync</th>
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Success Rate</th>
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="peerStatusTableBody">
+                            <!-- Will be populated by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Sync Events Log -->
+                <div>
+                    <h4>Last Sync Events</h4>
+                    <table id="syncEventsTable" style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background-color: #f5f5f5;">
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Zeitstempel</th>
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Peer Name</th>
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Status</th>
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Dauer</th>
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Details</th>
+                            </tr>
+                        </thead>
+                        <tbody id="syncEventsTableBody">
+                            <!-- Will be populated by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Actions -->
+                <div style="margin-top: 20px; display: flex; gap: 10px;">
+                    <button class="btn btn-primary" onclick="triggerPeerSync()">Sync Now</button>
+                    <button class="btn btn-secondary" onclick="loadPeerSyncStatus()">Refresh Status</button>
                 </div>
             </div>
         </div>

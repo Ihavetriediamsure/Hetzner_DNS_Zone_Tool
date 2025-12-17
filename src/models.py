@@ -207,6 +207,60 @@ class SMTPConfigRequest(BaseModel):
     to_address: str
     enabled_events: List[str]
 
+class AuditLogConfigResponse(BaseModel):
+    """Audit Log Rotation Configuration Response"""
+    max_size_mb: int
+    max_age_days: int
+    rotation_interval_hours: int
+
+class AuditLogConfigRequest(BaseModel):
+    """Audit Log Rotation Configuration Request"""
+    max_size_mb: int = Field(ge=1, le=1000, description="Maximum log file size in MB")
+    max_age_days: int = Field(ge=1, le=365, description="Maximum age of logs in days")
+    rotation_interval_hours: int = Field(ge=1, le=168, description="Rotation check interval in hours")
+
+class PeerSyncConfigResponse(BaseModel):
+    """Peer-Sync Configuration Response"""
+    enabled: bool
+    peer_nodes: List[str]
+    interval: int
+    timeout: int
+    max_retries: int
+    rate_limit: float
+    ntp_enabled: bool
+    peer_public_keys: Dict[str, Dict[str, str]]  # peer_ip -> {name, public_key} (public_key is X25519 Base64 PEM)
+
+class PeerSyncConfigRequest(BaseModel):
+    """Peer-Sync Configuration Request"""
+    enabled: bool
+    peer_nodes: List[str]
+    interval: int = Field(ge=60, le=3600, description="Sync interval in seconds")
+    timeout: int = Field(ge=1, le=30, description="Request timeout in seconds")
+    max_retries: int = Field(ge=0, le=10, description="Maximum retries")
+    rate_limit: float = Field(ge=0.1, le=10.0, description="Rate limit (requests per second per peer)")
+    ntp_enabled: bool
+    peer_public_keys: Dict[str, Dict[str, str]]  # peer_ip -> {name, public_key} (public_key is X25519 WireGuard format: 32 bytes raw, Base64)
+
+class PeerSyncPublicKeysResponse(BaseModel):
+    """Peer-Sync Public Key Response"""
+    public_key: str  # Base64-encoded X25519 public key (WireGuard format: 32 bytes raw)
+
+class PeerSyncStatusResponse(BaseModel):
+    """Peer-Sync Status Response"""
+    enabled: bool
+    peer_nodes: List[str]
+    overview: Dict[str, Any]
+    peer_statuses: List[Dict[str, Any]]
+    recent_events: List[Dict[str, Any]]
+
+class PeerSyncSyncNowRequest(BaseModel):
+    """Peer-Sync Manual Sync Request"""
+    peer: Optional[str] = None  # Optional: sync only with this peer
+
+class PeerSyncTestConnectionRequest(BaseModel):
+    """Peer-Sync Test Connection Request"""
+    peer: str
+
 
 class SyncStatus(BaseModel):
     """Sync Status"""

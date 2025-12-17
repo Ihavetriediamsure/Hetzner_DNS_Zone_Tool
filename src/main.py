@@ -27,13 +27,13 @@ if 'src.config_manager' in sys.modules:
     import src.config_manager
     src.config_manager._config_manager = None
 
-from fastapi import FastAPI, Request, HTTPException, Depends
+from fastapi import FastAPI, Request, HTTPException, Depends, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from contextlib import asynccontextmanager
 from datetime import datetime
-from src.models import HealthResponse, LoginRequest, LoginResponse, ChangePasswordRequest, TwoFactorSetupRequest, TwoFactorVerifyRequest, SecurityConfigResponse, IPAccessControlResponse, TwoFactorStatus, IPWhitelistEntry, BruteForceConfigResponse, BruteForceConfigRequest, SMTPConfigResponse, SMTPConfigRequest, SetupRequest, SetupResponse
+from src.models import HealthResponse, LoginRequest, LoginResponse, ChangePasswordRequest, TwoFactorSetupRequest, TwoFactorVerifyRequest, SecurityConfigResponse, IPAccessControlResponse, TwoFactorStatus, IPWhitelistEntry, BruteForceConfigResponse, BruteForceConfigRequest, SMTPConfigResponse, SMTPConfigRequest, SetupRequest, SetupResponse, AuditLogConfigResponse, AuditLogConfigRequest, PeerSyncConfigResponse, PeerSyncConfigRequest, PeerSyncPublicKeysResponse, PeerSyncStatusResponse, PeerSyncSyncNowRequest, PeerSyncTestConnectionRequest
 from src.config_manager import get_config_manager
 from src.auth import get_auth_manager
 from src.two_factor import get_two_factor_auth
@@ -47,6 +47,9 @@ from src.brute_force_protection import get_brute_force_protection
 from src.audit_log import get_audit_log, AuditAction
 from src.ip_validator import IPValidator
 from src.smtp_notifier import get_smtp_notifier
+from src.split_brain_protection import get_split_brain_protection
+from src.peer_sync import get_peer_sync
+from src.peer_auth import verify_peer_signature, verify_peer_signature_for_body
 from pydantic import BaseModel
 from typing import Optional, List, Dict
 import logging
@@ -88,6 +91,14 @@ async def lifespan(app: FastAPI):
         logger.info("Auto-update service stopped on application shutdown")
     except Exception as e:
         logger.error(f"Error stopping auto-update service: {e}")
+    
+    # Shutdown: Stop peer-sync service
+    try:
+        peer_sync = get_peer_sync()
+        await peer_sync.stop()
+        logger.info("Peer-Sync service stopped on application shutdown")
+    except Exception as e:
+        logger.error(f"Error stopping peer-sync service: {e}")
     
     # Shutdown: Stop audit log rotation task
     try:
@@ -1072,22 +1083,64 @@ async def check_ip_status(zone_id: str, rrset_id: str, request: CheckIPRequest, 
             timeout=request.timeout
         )
         
-        # Log monitor IP offline event if IP was previously online and is now offline
-        if request.previous_status is True and not result.get("reachable", False):
-            username = http_request.session.get("username", "unknown") if hasattr(http_request, 'session') else "unknown"
-            audit_log = get_audit_log()
-            audit_log.log(
-                action=AuditAction.MONITOR_IP_OFFLINE,
-                username=username,
-                request=http_request,
-                success=False,
-                details={
-                    "zone_id": zone_id,
-                    "rrset_id": rrset_id,
-                    "ip": request.ip,
-                    "check_method": request.check_method
-                }
-            )
+        # Log monitor IP status changes
+        username = http_request.session.get("username", "unknown") if hasattr(http_request, 'session') else "unknown"
+        audit_log = get_audit_log()
+        is_reachable = result.get("reachable", False)
+        
+        # Log status change events
+        if request.previous_status is not None:
+            # IP status changed
+            if request.previous_status is True and not is_reachable:
+                # IP went from online to offline
+                audit_log.log(
+                    action=AuditAction.MONITOR_IP_OFFLINE,
+                    username=username,
+                    request=http_request,
+                    success=False,
+                    details={
+                        "zone_id": zone_id,
+                        "rrset_id": rrset_id,
+                        "ip": request.ip,
+                        "port": request.port,
+                        "check_method": request.check_method,
+                        "response_time_ms": result.get("response_time", 0) * 1000 if result.get("response_time") else None
+                    }
+                )
+            elif request.previous_status is False and is_reachable:
+                # IP went from offline to online
+                audit_log.log(
+                    action=AuditAction.MONITOR_IP_ONLINE,
+                    username=username,
+                    request=http_request,
+                    success=True,
+                    details={
+                        "zone_id": zone_id,
+                        "rrset_id": rrset_id,
+                        "ip": request.ip,
+                        "port": request.port,
+                        "check_method": request.check_method,
+                        "response_time_ms": result.get("response_time", 0) * 1000 if result.get("response_time") else None
+                    }
+                )
+        
+        # Log every status check (for monitoring and debugging)
+        audit_log.log(
+            action=AuditAction.MONITOR_IP_STATUS_CHECK,
+            username=username,
+            request=http_request,
+            success=is_reachable,
+            details={
+                "zone_id": zone_id,
+                "rrset_id": rrset_id,
+                "ip": request.ip,
+                "port": request.port,
+                "check_method": request.check_method,
+                "reachable": is_reachable,
+                "response_time_ms": result.get("response_time", 0) * 1000 if result.get("response_time") else None,
+                "previous_status": request.previous_status
+            }
+        )
         
         return result
     except Exception as e:
@@ -1254,6 +1307,46 @@ async def set_ip(zone_id: str, rrset_id: str, request: SetIPRequest, http_reques
             # Check if record type is A or AAAA
             if current_rrset.type not in ["A", "AAAA"]:
                 raise HTTPException(status_code=400, detail=f"IP kann nur für A oder AAAA Records gesetzt werden, nicht für {current_rrset.type}")
+            
+            # Split-Brain-Schutz: Prüfe andere Peers (nur wenn Peer-Sync aktiviert UND Monitor IP konfiguriert)
+            storage = get_local_ip_storage()
+            local_settings = storage.get_local_ip(zone_id, rrset_id)
+            
+            if local_settings and local_settings.get("local_ip"):
+                split_brain_protection = get_split_brain_protection()
+                
+                if split_brain_protection.is_enabled():
+                    monitor_ip = local_settings.get("local_ip")
+                    monitor_port = local_settings.get("port", 80)
+                    
+                    split_brain_check = await split_brain_protection.check_split_brain(
+                        monitor_ip=monitor_ip,
+                        port=monitor_port
+                    )
+                    
+                    if split_brain_check.get("split_brain_detected", False):
+                        # Log to audit log
+                        audit_log = get_audit_log()
+                        username = http_request.session.get("username", "unknown") if hasattr(http_request, 'session') else "unknown"
+                        audit_log.log(
+                            action=AuditAction.IP_UPDATE_SPLIT_BRAIN_DETECTED,
+                            username=username,
+                            request=http_request,
+                            success=False,
+                            details={
+                                "zone_id": zone_id,
+                                "rrset_id": rrset_id,
+                                "monitor_ip": monitor_ip,
+                                "port": monitor_port,
+                                "alive_peers": split_brain_check.get("alive_peers", []),
+                                "reason": split_brain_check.get("reason", ""),
+                                "source": "manual"
+                            }
+                        )
+                        raise HTTPException(
+                            status_code=409,
+                            detail=f"Split-Brain detected: Monitor IP {monitor_ip} is alive on multiple peers. Update blocked to prevent endless loop."
+                        )
             
             # Update with new IP (preserve all other values)
             updated_rrset = await client.create_or_update_rrset(
@@ -1473,8 +1566,47 @@ async def assign_server_ip(zone_id: str, rrset_id: str, request: Request, token_
             if not current_rrset:
                 raise HTTPException(status_code=404, detail=f"RRSet {rrset_id} nicht gefunden")
             
-            # Get TTL override from storage if set
+            # Split-Brain-Schutz: Prüfe andere Peers (nur wenn Peer-Sync aktiviert UND Monitor IP konfiguriert)
             storage = get_local_ip_storage()
+            local_settings = storage.get_local_ip(zone_id, rrset_id)
+            
+            if local_settings and local_settings.get("local_ip"):
+                split_brain_protection = get_split_brain_protection()
+                
+                if split_brain_protection.is_enabled():
+                    monitor_ip = local_settings.get("local_ip")
+                    monitor_port = local_settings.get("port", 80)
+                    
+                    split_brain_check = await split_brain_protection.check_split_brain(
+                        monitor_ip=monitor_ip,
+                        port=monitor_port
+                    )
+                    
+                    if split_brain_check.get("split_brain_detected", False):
+                        # Log to audit log
+                        audit_log = get_audit_log()
+                        username = request.session.get("username", "unknown") if hasattr(request, 'session') else "unknown"
+                        audit_log.log(
+                            action=AuditAction.IP_UPDATE_SPLIT_BRAIN_DETECTED,
+                            username=username,
+                            request=request,
+                            success=False,
+                            details={
+                                "zone_id": zone_id,
+                                "rrset_id": rrset_id,
+                                "monitor_ip": monitor_ip,
+                                "port": monitor_port,
+                                "alive_peers": split_brain_check.get("alive_peers", []),
+                                "reason": split_brain_check.get("reason", ""),
+                                "source": "server_ip"
+                            }
+                        )
+                        raise HTTPException(
+                            status_code=409,
+                            detail=f"Split-Brain detected: Monitor IP {monitor_ip} is alive on multiple peers. Update blocked to prevent endless loop."
+                        )
+            
+            # Get TTL override from storage if set
             ttl_override = storage.get_ttl(zone_id, rrset_id)
             
             # Use TTL override if set, otherwise keep current TTL or default to 3600
@@ -2218,6 +2350,83 @@ async def get_audit_logs(
     return {"success": True, "logs": logs, "count": len(logs)}
 
 
+@app.get("/api/v1/security/audit-log-config", response_model=AuditLogConfigResponse)
+async def get_audit_log_config(request: Request):
+    """Get audit log rotation configuration"""
+    if not request.session.get("authenticated", False):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    config_manager = get_config_manager()
+    config = config_manager.load_config()
+    audit_config = config.get('security', {}).get('audit_log', {})
+    
+    return AuditLogConfigResponse(
+        max_size_mb=audit_config.get('max_size_mb', 10),
+        max_age_days=audit_config.get('max_age_days', 30),
+        rotation_interval_hours=audit_config.get('rotation_interval_hours', 24)
+    )
+
+
+@app.put("/api/v1/security/audit-log-config")
+async def update_audit_log_config(request: Request, config_data: AuditLogConfigRequest):
+    """Update audit log rotation configuration"""
+    if not request.session.get("authenticated", False):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    username = request.session.get("username", "admin")
+    audit_log = get_audit_log()
+    config_manager = get_config_manager()
+    
+    try:
+        # Update config
+        config = config_manager.load_config()
+        if 'security' not in config:
+            config['security'] = {}
+        if 'audit_log' not in config['security']:
+            config['security']['audit_log'] = {}
+        
+        config['security']['audit_log']['max_size_mb'] = config_data.max_size_mb
+        config['security']['audit_log']['max_age_days'] = config_data.max_age_days
+        config['security']['audit_log']['rotation_interval_hours'] = config_data.rotation_interval_hours
+        
+        config_manager._config = config
+        config_manager.save_config()
+        
+        # Reload audit log config
+        audit_log._load_config()
+        
+        # Restart rotation task if interval changed
+        audit_log.stop_rotation_task()
+        audit_log._start_rotation_task()
+        
+        # Log configuration change
+        audit_log.log(
+            action=AuditAction.TOKEN_UPDATE,  # Reuse existing action for config changes
+            username=username,
+            request=request,
+            success=True,
+            details={
+                "config_type": "audit_log_rotation",
+                "max_size_mb": config_data.max_size_mb,
+                "max_age_days": config_data.max_age_days,
+                "rotation_interval_hours": config_data.rotation_interval_hours
+            }
+        )
+        
+        return {"success": True, "message": "Audit log configuration updated"}
+    except Exception as e:
+        logger.error(f"Error updating audit log config: {e}")
+        audit_log.log(
+            action=AuditAction.TOKEN_UPDATE,
+            username=username,
+            request=request,
+            success=False,
+            error=str(e),
+            details={"config_type": "audit_log_rotation"}
+        )
+        raise HTTPException(status_code=500, detail=f"Error updating audit log configuration: {str(e)}")
+
+
 @app.get("/api/v1/security/brute-force", response_model=BruteForceConfigResponse)
 async def get_brute_force_config(request: Request):
     """Get brute-force protection configuration"""
@@ -2325,6 +2534,531 @@ async def update_smtp_config(request: Request, config_data: SMTPConfigRequest):
             error=str(e)
         )
         raise HTTPException(status_code=500, detail=f"Failed to update SMTP configuration: {str(e)}")
+
+
+# Peer-Sync API Endpoints
+
+@app.get("/api/v1/peer-sync/config", response_model=PeerSyncConfigResponse)
+async def get_peer_sync_config(request: Request):
+    """Get peer-sync configuration"""
+    if not request.session.get("authenticated", False):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        config_manager = get_config_manager()
+        config = config_manager.load_config()
+        peer_sync_config = config.get('peer_sync', {})
+        
+        return PeerSyncConfigResponse(
+            enabled=peer_sync_config.get('enabled', False),
+            peer_nodes=peer_sync_config.get('peer_nodes', []),
+            interval=peer_sync_config.get('interval', 300),
+            timeout=peer_sync_config.get('timeout', 5),
+            max_retries=peer_sync_config.get('max_retries', 3),
+            rate_limit=peer_sync_config.get('rate_limit', 1.0),
+            ntp_enabled=peer_sync_config.get('ntp_enabled', False),
+            peer_public_keys=peer_sync_config.get('peer_public_keys', {})
+        )
+    except Exception as e:
+        logger.error(f"Error getting peer-sync config: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting peer-sync configuration: {str(e)}")
+
+
+@app.put("/api/v1/peer-sync/config")
+async def update_peer_sync_config(request: Request, config_data: PeerSyncConfigRequest):
+    """Update peer-sync configuration"""
+    if not request.session.get("authenticated", False):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    username = request.session.get("username", "admin")
+    audit_log = get_audit_log()
+    config_manager = get_config_manager()
+    peer_sync = get_peer_sync()
+    
+    try:
+        # Update config
+        config = config_manager.load_config()
+        if 'peer_sync' not in config:
+            config['peer_sync'] = {}
+        
+        old_enabled = config['peer_sync'].get('enabled', False)
+        config['peer_sync']['enabled'] = config_data.enabled
+        config['peer_sync']['peer_nodes'] = config_data.peer_nodes
+        config['peer_sync']['interval'] = config_data.interval
+        config['peer_sync']['timeout'] = config_data.timeout
+        config['peer_sync']['max_retries'] = config_data.max_retries
+        config['peer_sync']['rate_limit'] = config_data.rate_limit
+        config['peer_sync']['ntp_enabled'] = config_data.ntp_enabled
+        config['peer_sync']['peer_public_keys'] = config_data.peer_public_keys
+        
+        config_manager._config = config
+        config_manager.save_config()
+        
+        # Reload peer-sync config
+        peer_sync._load_config()
+        peer_sync._load_peer_public_keys()
+        
+        # Restart service if enabled changed
+        if old_enabled != config_data.enabled:
+            if config_data.enabled:
+                await peer_sync.start()
+                audit_log.log(
+                    action=AuditAction.PEER_SYNC_ENABLE,
+                    username=username,
+                    request=request,
+                    success=True
+                )
+            else:
+                await peer_sync.stop()
+                audit_log.log(
+                    action=AuditAction.PEER_SYNC_DISABLE,
+                    username=username,
+                    request=request,
+                    success=True
+                )
+        else:
+            # Log config update
+            audit_log.log(
+                action=AuditAction.PEER_SYNC_CONFIG_UPDATE,
+                username=username,
+                request=request,
+                success=True,
+                details={
+                    "interval": config_data.interval,
+                    "timeout": config_data.timeout,
+                    "max_retries": config_data.max_retries,
+                    "rate_limit": config_data.rate_limit,
+                    "ntp_enabled": config_data.ntp_enabled
+                }
+            )
+        
+        return {"success": True, "message": "Peer-Sync configuration updated"}
+    except Exception as e:
+        logger.error(f"Error updating peer-sync config: {e}")
+        audit_log.log(
+            action=AuditAction.PEER_SYNC_CONFIG_UPDATE,
+            username=username,
+            request=request,
+            success=False,
+            error=str(e)
+        )
+        raise HTTPException(status_code=500, detail=f"Error updating peer-sync configuration: {str(e)}")
+
+
+@app.get("/api/v1/peer-sync/public-keys", response_model=PeerSyncPublicKeysResponse)
+async def get_peer_sync_public_keys(request: Request):
+    """Get our own X25519 public key for peer-sync"""
+    if not request.session.get("authenticated", False):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        peer_sync = get_peer_sync()
+        public_key_b64 = peer_sync.get_public_key_base64()
+        
+        return PeerSyncPublicKeysResponse(
+            public_key=public_key_b64
+        )
+    except Exception as e:
+        logger.error(f"Error getting public key: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting public key: {str(e)}")
+
+
+@app.post("/api/v1/peer-sync/regenerate-key")
+async def regenerate_peer_sync_key(request: Request):
+    """Manually regenerate X25519 key pair"""
+    if not request.session.get("authenticated", False):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        from src.audit_log import get_audit_log, AuditAction
+        username = request.session.get("username", "unknown")
+        
+        peer_sync = get_peer_sync()
+        success = peer_sync.regenerate_x25519_key()
+        
+        if success:
+            # Log the action
+            audit_log = get_audit_log()
+            audit_log.log(
+                action=AuditAction.PEER_SYNC_PEER_KEY_UPDATE,
+                username=username,
+                request=request,
+                success=True,
+                details={"action": "regenerate_private_key"}
+            )
+            return {"success": True, "message": "X25519 key pair regenerated successfully", "public_key": peer_sync.get_public_key_base64()}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to regenerate X25519 key pair")
+    except Exception as e:
+        logger.error(f"Error regenerating X25519 key: {e}")
+        raise HTTPException(status_code=500, detail=f"Error regenerating X25519 key: {str(e)}")
+
+
+@app.get("/api/v1/peer-sync/status", response_model=PeerSyncStatusResponse)
+async def get_peer_sync_status(request: Request):
+    """Get peer-sync status and metrics"""
+    if not request.session.get("authenticated", False):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        peer_sync = get_peer_sync()
+        status = peer_sync.get_status()
+        
+        # Build overview
+        stats = status.get("stats", {})
+        total_success = stats.get("total_successful_syncs", 0)
+        total_fail = stats.get("total_failed_syncs", 0)
+        total = total_success + total_fail
+        success_rate = (total_success / total * 100) if total > 0 else 0
+        
+        # Get last sync time from recent events
+        last_sync = None
+        last_error = None
+        if status.get("recent_events"):
+            for event in reversed(status["recent_events"]):
+                if event.get("status") == "success" and not last_sync:
+                    last_sync = event.get("timestamp")
+                elif event.get("status") == "error" and not last_error:
+                    last_error = event.get("timestamp")
+        
+        overview = {
+            "last_sync": last_sync,
+            "last_error": last_error,
+            "overall_status": "success" if not last_error or (last_sync and last_sync > last_error) else "error",
+            "total_successful_syncs": total_success,
+            "total_failed_syncs": total_fail,
+            "average_sync_duration_ms": 0,  # TODO: Calculate from events
+            "overall_success_rate": round(success_rate, 2)
+        }
+        
+        # Build peer statuses
+        peer_statuses = []
+        peer_stats = stats.get("peer_stats", {})
+        for peer in status.get("peer_nodes", []):
+            peer_ip = peer.split(":")[0]
+            peer_name = peer_sync.peer_names.get(peer_ip, peer_ip)
+            peer_stat = peer_stats.get(peer_ip, {})
+            
+            # Find last event for this peer
+            last_event = None
+            for event in reversed(status.get("recent_events", [])):
+                if event.get("peer_name") == peer_name:
+                    last_event = event
+                    break
+            
+            peer_statuses.append({
+                "peer_name": peer_name,
+                "peer_ip": peer,
+                "status": last_event.get("status", "unknown") if last_event else "unknown",
+                "last_sync": last_event.get("timestamp") if last_event else None,
+                "sync_duration_ms": last_event.get("duration_ms", 0) if last_event else 0,
+                "success_rate": round((peer_stat.get("success_count", 0) / (peer_stat.get("success_count", 0) + peer_stat.get("fail_count", 0)) * 100) if (peer_stat.get("success_count", 0) + peer_stat.get("fail_count", 0)) > 0 else 0, 2),
+                "average_response_time_ms": round(peer_stat.get("avg_response_time_ms", 0), 2),
+                "total_retries": peer_stat.get("total_retries", 0),
+                "rate_limit_violations": peer_stat.get("rate_limit_violations", 0),
+                "generation": {},  # TODO: Get from storage
+                "error": last_event.get("details") if last_event and last_event.get("status") == "error" else None
+            })
+        
+        return PeerSyncStatusResponse(
+            enabled=status.get("enabled", False),
+            peer_nodes=status.get("peer_nodes", []),
+            overview=overview,
+            peer_statuses=peer_statuses,
+            recent_events=status.get("recent_events", [])
+        )
+    except Exception as e:
+        logger.error(f"Error getting peer-sync status: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting peer-sync status: {str(e)}")
+
+
+@app.post("/api/v1/peer-sync/sync-now")
+async def trigger_peer_sync(request: Request, sync_request: PeerSyncSyncNowRequest = None):
+    """Manually trigger peer-sync"""
+    if not request.session.get("authenticated", False):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    username = request.session.get("username", "admin")
+    audit_log = get_audit_log()
+    peer_sync = get_peer_sync()
+    
+    try:
+        # TODO: Implement single-peer sync if peer is specified
+        result = await peer_sync.sync_with_all_peers()
+        
+        audit_log.log(
+            action=AuditAction.PEER_SYNC_MANUAL_TRIGGER,
+            username=username,
+            request=request,
+            success=len(result.get("synced_peers", [])) > 0,
+            details={
+                "synced_peers": result.get("synced_peers", []),
+                "failed_peers": result.get("failed_peers", [])
+            }
+        )
+        
+        return {
+            "success": True,
+            "message": f"Sync completed: {len(result.get('synced_peers', []))} peers synced",
+            "synced_peers": result.get("synced_peers", []),
+            "failed_peers": result.get("failed_peers", [])
+        }
+    except Exception as e:
+        logger.error(f"Error triggering peer-sync: {e}")
+        audit_log.log(
+            action=AuditAction.PEER_SYNC_MANUAL_TRIGGER,
+            username=username,
+            request=request,
+            success=False,
+            error=str(e)
+        )
+        raise HTTPException(status_code=500, detail=f"Error triggering peer-sync: {str(e)}")
+
+
+@app.post("/api/v1/peer-sync/test-connection")
+async def test_peer_connection(request: Request, test_request: PeerSyncTestConnectionRequest):
+    """Test connection to a peer"""
+    if not request.session.get("authenticated", False):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    username = request.session.get("username", "admin")
+    audit_log = get_audit_log()
+    
+    try:
+        import time
+        start_time = time.time()
+        
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(f"http://{test_request.peer}/health")
+            latency_ms = (time.time() - start_time) * 1000
+        
+        success = response.status_code == 200
+        
+        audit_log.log(
+            action=AuditAction.PEER_SYNC_CONNECTION_TEST,
+            username=username,
+            request=request,
+            success=success,
+            details={
+                "peer": test_request.peer,
+                "latency_ms": round(latency_ms, 2)
+            }
+        )
+        
+        return {
+            "success": success,
+            "message": "Connection test completed" if success else "Connection test failed",
+            "latency_ms": round(latency_ms, 2)
+        }
+    except Exception as e:
+        logger.error(f"Error testing peer connection: {e}")
+        audit_log.log(
+            action=AuditAction.PEER_SYNC_CONNECTION_TEST,
+            username=username,
+            request=request,
+            success=False,
+            error=str(e),
+            details={"peer": test_request.peer}
+        )
+        raise HTTPException(status_code=500, detail=f"Error testing peer connection: {str(e)}")
+
+
+@app.get("/api/v1/peer-sync/check-monitor-ip")
+async def check_monitor_ip_peer(
+    request: Request, 
+    ip: str, 
+    port: Optional[int] = None
+):
+    """Check monitor IP status (for split-brain protection)"""
+    # Verify peer signature
+    try:
+        peer_x25519_pub, peer_ip = await verify_peer_signature(request)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Peer authentication error in check-monitor-ip: {e}")
+        raise HTTPException(status_code=403, detail="Peer authentication failed")
+    
+    try:
+        from src.internal_ip_monitor import get_internal_ip_monitor
+        from src.config_manager import get_config_manager
+        
+        monitor = get_internal_ip_monitor()
+        config_manager = get_config_manager()
+        config = config_manager.load_config()
+        
+        # Get peer name from config
+        peer_sync_config = config.get('peer_sync', {})
+        peer_keys_config = peer_sync_config.get('peer_keys', {})
+        
+        # Find peer name by IP
+        peer_name = peer_ip
+        if peer_ip in peer_keys_config:
+            peer_name = peer_keys_config[peer_ip].get('name', peer_ip)
+        
+        # Check monitor IP
+        check_result = await monitor.check_internal_ip_reachable(
+            ip,
+            port=port or 80,
+            check_method="ping",
+            timeout=5
+        )
+        
+        return {
+            "alive": check_result.get("reachable", False),
+            "check_method": check_result.get("check_method", "ping"),
+            "response_time_ms": check_result.get("response_time", 0) * 1000 if check_result.get("response_time") else 0,
+            "peer_name": peer_name
+        }
+    except Exception as e:
+        logger.error(f"Error checking monitor IP: {e}")
+        raise HTTPException(status_code=500, detail=f"Error checking monitor IP: {str(e)}")
+
+
+# Peer-to-Peer Sync Endpoints (for peer communication)
+
+@app.get("/api/v1/sync/local-ips")
+async def get_sync_local_ips(request: Request):
+    """Get local_ips.yaml for peer sync (encrypted) - Peer-to-Peer endpoint"""
+    # Verify peer signature
+    try:
+        peer_x25519_pub, peer_ip = await verify_peer_signature(request)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Peer authentication error in get_sync_local_ips: {e}")
+        raise HTTPException(status_code=403, detail="Peer authentication failed")
+    
+    try:
+        from src.peer_sync import get_peer_sync
+        import base64
+        import json
+        import hmac
+        import hashlib
+        
+        storage = get_local_ip_storage()
+        data = storage._load_storage()
+        generation = data.get('generation', {})
+        
+        # Get our peer sync instance
+        peer_sync = get_peer_sync()
+        if not peer_sync.x25519_private_key or not peer_sync.x25519_public_key:
+            raise HTTPException(status_code=500, detail="X25519 keys not available")
+        
+        # Encrypt config with peer's public key (ECDH)
+        encrypted_result = peer_sync._encrypt_config(data, peer_x25519_pub)
+        encrypted_data_b64 = encrypted_result["encrypted_data"]
+        nonce_b64 = encrypted_result["nonce"]
+        
+        # Sign encrypted data with our public key (HMAC-SHA256)
+        sig_data = f"{encrypted_data_b64}:{nonce_b64}".encode()
+        signature = peer_sync._sign_data(sig_data)
+        
+        # Get our public key as Base64
+        our_public_key_b64 = peer_sync.get_public_key_base64()
+        
+        response = Response(
+            content=json.dumps({
+                "encrypted_data": encrypted_data_b64,
+                "nonce": nonce_b64,
+                "generation": generation
+            }),
+            media_type="application/json",
+            headers={
+                "X-Peer-Public-Key": our_public_key_b64,
+                "X-Peer-Signature": signature
+            }
+        )
+        return response
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting sync local-ips: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting sync local-ips: {str(e)}")
+
+
+@app.post("/api/v1/sync/local-ips")
+async def receive_sync_local_ips(request: Request):
+    """Receive local_ips.yaml from peer (encrypted) - Peer-to-Peer endpoint"""
+    # Verify peer signature first (before reading body)
+    try:
+        peer_x25519_pub, peer_ip = await verify_peer_signature(request)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Peer authentication error in receive_sync_local_ips: {e}")
+        raise HTTPException(status_code=403, detail="Peer authentication failed")
+    
+    try:
+        from src.peer_sync import get_peer_sync, is_newer
+        import base64
+        import json
+        
+        # Read request body
+        body = await request.body()
+        sync_data = json.loads(body.decode('utf-8'))
+        
+        # Get encrypted data
+        encrypted_data = sync_data.get("encrypted_data", "")
+        nonce = sync_data.get("nonce", "")
+        remote_gen = sync_data.get('generation', {})
+        response_signature = request.headers.get("X-Peer-Signature", "")
+        peer_public_key_b64 = request.headers.get("X-Peer-Public-Key", "")
+        
+        if not encrypted_data or not nonce:
+            raise HTTPException(status_code=400, detail="Missing encrypted_data or nonce")
+        
+        if not response_signature:
+            raise HTTPException(status_code=400, detail="Missing signature")
+        
+        # Use provided public key or cached one
+        if peer_public_key_b64:
+            try:
+                peer_public_key_bytes = base64.b64decode(peer_public_key_b64)
+                from cryptography.hazmat.primitives import serialization
+                from cryptography.hazmat.primitives.asymmetric import x25519
+                peer_x25519_pub = serialization.load_pem_public_key(peer_public_key_bytes)
+                if not isinstance(peer_x25519_pub, x25519.X25519PublicKey):
+                    raise ValueError("Invalid X25519 public key type")
+            except Exception as e:
+                logger.warning(f"Failed to decode peer public key: {e}")
+                # Use cached public key from verify_peer_signature
+        
+        # Verify signature of encrypted data with peer's public key
+        sig_data = f"{encrypted_data}:{nonce}".encode()
+        try:
+            from src.peer_auth import verify_peer_signature_for_body
+            if not await verify_peer_signature_for_body(request, body, peer_x25519_pub, response_signature):
+                raise HTTPException(status_code=403, detail="Invalid signature for encrypted data")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning(f"Signature verification failed for encrypted data: {e}")
+            raise HTTPException(status_code=403, detail="Invalid signature for encrypted data")
+        
+        # Decrypt config with derived shared secret (ECDH)
+        peer_sync = get_peer_sync()
+        remote_data = peer_sync._decrypt_config(encrypted_data, nonce, peer_x25519_pub)
+        
+        # Get local config
+        storage = get_local_ip_storage()
+        local_data = storage._load_storage()
+        local_gen = local_data.get('generation', {})
+        
+        # Check if peer is newer
+        if is_newer(local_gen, remote_gen, local_data, remote_data):
+            # Complete config takeover
+            storage._storage = remote_data
+            storage._save_storage()
+            logger.info(f"Config merged from peer {peer_ip}")
+            return {"success": True, "merged": True}
+        
+        return {"success": True, "merged": False}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error receiving sync local-ips: {e}")
+        raise HTTPException(status_code=500, detail=f"Error receiving sync local-ips: {str(e)}")
 
 
 if __name__ == "__main__":

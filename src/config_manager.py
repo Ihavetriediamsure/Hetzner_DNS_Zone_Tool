@@ -463,6 +463,16 @@ class ConfigManager:
             'sync': {
                 'auto_sync': False,
                 'cache_path': os.getenv('SYNC_CACHE_PATH', './config/sync_data.json')
+            },
+            'peer_sync': {
+                'enabled': False,
+                'peer_nodes': [],
+                'interval': 300,
+                'timeout': 5,
+                'max_retries': 3,
+                'rate_limit': 1.0,
+                'ntp_enabled': False,
+                'peer_public_keys': {}  # peer_ip -> {name, public_key} (public_key is X25519 Base64 PEM)
             }
         }
 

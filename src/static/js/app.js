@@ -104,6 +104,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             // Load audit logs when audit-logs tab is opened
             if (targetTab === 'audit-logs') {
                 loadAuditLogs();
+                loadAuditLogSettings();
             }
         }
     }
@@ -3299,6 +3300,74 @@ function clearAuditLogFilters() {
     loadAuditLogs();
 }
 
+// Audit Log Settings Functions
+async function loadAuditLogSettings() {
+    try {
+        const response = await fetch('/api/v1/security/audit-log-config');
+        if (!response.ok) {
+            throw new Error('Failed to load audit log settings');
+        }
+        
+        const data = await response.json();
+        
+        // Fill form fields
+        document.getElementById('auditLogMaxSizeMB').value = data.max_size_mb || 10;
+        document.getElementById('auditLogMaxAgeDays').value = data.max_age_days || 30;
+        document.getElementById('auditLogRotationIntervalHours').value = data.rotation_interval_hours || 24;
+    } catch (error) {
+        console.error('Error loading audit log settings:', error);
+        showToast('Error loading audit log settings', 'error');
+    }
+}
+
+async function saveAuditLogSettings() {
+    const saveBtn = document.getElementById('saveAuditLogSettingsBtn');
+    const originalText = saveBtn.textContent;
+    
+    try {
+        saveBtn.textContent = 'Saving...';
+        saveBtn.disabled = true;
+        
+        const maxSizeMB = parseInt(document.getElementById('auditLogMaxSizeMB').value);
+        const maxAgeDays = parseInt(document.getElementById('auditLogMaxAgeDays').value);
+        const rotationIntervalHours = parseInt(document.getElementById('auditLogRotationIntervalHours').value);
+        
+        // Validate
+        if (isNaN(maxSizeMB) || maxSizeMB < 1 || maxSizeMB > 1000) {
+            throw new Error('Max file size must be between 1 and 1000 MB');
+        }
+        if (isNaN(maxAgeDays) || maxAgeDays < 1 || maxAgeDays > 365) {
+            throw new Error('Max age must be between 1 and 365 days');
+        }
+        if (isNaN(rotationIntervalHours) || rotationIntervalHours < 1 || rotationIntervalHours > 168) {
+            throw new Error('Rotation interval must be between 1 and 168 hours');
+        }
+        
+        const response = await fetch('/api/v1/security/audit-log-config', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                max_size_mb: maxSizeMB,
+                max_age_days: maxAgeDays,
+                rotation_interval_hours: rotationIntervalHours
+            })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'Failed to save audit log settings');
+        }
+        
+        showToast('Audit log settings saved successfully', 'success');
+    } catch (error) {
+        console.error('Error saving audit log settings:', error);
+        showToast(`Error: ${error.message}`, 'error');
+    } finally {
+        saveBtn.textContent = originalText;
+        saveBtn.disabled = false;
+    }
+}
+
 async function loadSMTPConfig() {
     try {
         const response = await fetch('/api/v1/security/smtp');
@@ -3432,3 +3501,418 @@ async function saveSMTPConfig() {
         }
     }
 }
+
+// ==================== Peer-Sync Functions ====================
+
+// Load Peer-Sync configuration
+async function loadPeerSyncConfig() {
+    try {
+        const response = await fetch('/api/v1/peer-sync/config');
+        if (!response.ok) throw new Error('Failed to load peer-sync config');
+        const config = await response.json();
+        
+        // Update UI
+        document.getElementById('peerSyncEnabled').checked = config.enabled;
+        document.getElementById('peerSyncInterval').value = config.interval;
+        document.getElementById('peerSyncTimeout').value = config.timeout;
+        document.getElementById('peerSyncMaxRetries').value = config.max_retries;
+        document.getElementById('peerSyncRateLimit').value = config.rate_limit;
+        document.getElementById('peerSyncNtpEnabled').checked = config.ntp_enabled;
+        
+        // Load peer nodes with keys (combined)
+        const peerNodesList = document.getElementById('peerNodesList');
+        peerNodesList.innerHTML = '';
+        
+        // Create a map of peer nodes to their public keys
+        const peerMap = new Map();
+        config.peer_nodes.forEach(peer => {
+            const peerIp = peer.split(':')[0];
+            peerMap.set(peer, {
+                ip: peerIp,
+                address: peer,
+                public_key: config.peer_public_keys?.[peerIp]?.public_key || '',
+                name: config.peer_public_keys?.[peerIp]?.name || peerIp
+            });
+        });
+        
+        // Also add peers that have public keys but are not in peer_nodes
+        Object.entries(config.peer_public_keys || {}).forEach(([peerIp, peerData]) => {
+            const peerAddress = `${peerIp}:8412`; // Default port
+            if (!peerMap.has(peerAddress)) {
+                // Find matching peer node with same IP
+                const matchingPeer = config.peer_nodes.find(p => p.startsWith(peerIp + ':'));
+                if (matchingPeer) {
+                    peerMap.set(matchingPeer, {
+                        ip: peerIp,
+                        address: matchingPeer,
+                        public_key: peerData.public_key || '',
+                        name: peerData.name || peerIp
+                    });
+                } else {
+                    peerMap.set(peerAddress, {
+                        ip: peerIp,
+                        address: peerAddress,
+                        public_key: peerData.public_key || '',
+                        name: peerData.name || peerIp
+                    });
+                }
+            }
+        });
+        
+        // Display all peers
+        peerMap.forEach((peerData, peerAddress) => {
+            const div = document.createElement('div');
+            div.style.cssText = 'border: 1px solid #ddd; padding: 15px; border-radius: 4px; margin-bottom: 10px;';
+            div.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h4 style="margin: 0;">${peerData.name}</h4>
+                    <button class="btn btn-secondary" onclick="removePeerNode('${peerAddress}')">Remove</button>
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Peer Address (IP:Port):</label>
+                    <input type="text" value="${peerAddress}" readonly style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Peer Name:</label>
+                    <input type="text" id="peerName_${peerData.ip}" value="${peerData.name}" onchange="updatePeerName('${peerData.ip}', this.value)" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                </div>
+                <div>
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Public Key:</label>
+                    <input type="text" id="peerPublicKey_${peerData.ip}" value="${peerData.public_key}" onchange="updatePeerPublicKey('${peerData.ip}', this.value)" placeholder="Enter public key (32 bytes Base64)" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 0.85em;">
+                </div>
+            `;
+            peerNodesList.appendChild(div);
+        });
+        
+        // Load public keys
+        await loadPeerSyncPublicKeys();
+        
+    } catch (error) {
+        console.error('Error loading peer-sync config:', error);
+        showToast('Error loading peer-sync config: ' + error.message, 'error');
+    }
+}
+
+// Load own public key
+async function loadPeerSyncPublicKeys() {
+    try {
+        const response = await fetch('/api/v1/peer-sync/public-keys');
+        if (!response.ok) throw new Error('Failed to load public key');
+        const keys = await response.json();
+        
+        document.getElementById('peerPublicKey').value = keys.public_key || '';
+    } catch (error) {
+        console.error('Error loading public key:', error);
+    }
+}
+
+// Regenerate X25519 key pair
+async function regeneratePeerKey() {
+    if (!confirm('Do you really want to generate a new private key? The old public key will become invalid and must be updated on all other peers!')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/v1/peer-sync/regenerate-key', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        if (!response.ok) throw new Error('Failed to regenerate key');
+        
+        const result = await response.json();
+        showToast('Key pair successfully regenerated. Please update the new public key on all other peers!', 'success');
+        
+        // Reload public key
+        await loadPeerSyncPublicKeys();
+    } catch (error) {
+        showToast('Error regenerating key: ' + error.message, 'error');
+    }
+}
+
+// Toggle Peer-Sync
+async function togglePeerSync() {
+    await savePeerSyncConfig();
+}
+
+// Save Peer-Sync configuration
+async function savePeerSyncConfig() {
+    try {
+        // Get current config to preserve peer_nodes and peer_public_keys
+        const currentResponse = await fetch('/api/v1/peer-sync/config');
+        const currentConfig = await currentResponse.json();
+        
+        const config = {
+            enabled: document.getElementById('peerSyncEnabled').checked,
+            peer_nodes: currentConfig.peer_nodes || [],
+            interval: parseInt(document.getElementById('peerSyncInterval').value),
+            timeout: parseInt(document.getElementById('peerSyncTimeout').value),
+            max_retries: parseInt(document.getElementById('peerSyncMaxRetries').value),
+            rate_limit: parseFloat(document.getElementById('peerSyncRateLimit').value),
+            ntp_enabled: document.getElementById('peerSyncNtpEnabled').checked,
+            peer_public_keys: currentConfig.peer_public_keys || {}
+        };
+        
+        const response = await fetch('/api/v1/peer-sync/config', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        });
+        
+        if (!response.ok) throw new Error('Failed to save peer-sync config');
+        
+        showToast('Peer-Sync configuration saved', 'success');
+        await loadPeerSyncConfig();
+        await loadPeerSyncStatus();
+    } catch (error) {
+        showToast('Error saving peer-sync config: ' + error.message, 'error');
+    }
+}
+
+// Add peer node
+async function addPeerNode() {
+    const input = document.getElementById('newPeerNodeInput');
+    const peerAddress = input.value.trim();
+    
+    if (!peerAddress) {
+        showToast('Please enter a peer node (IP:Port)', 'error');
+        return;
+    }
+    
+    const peerName = prompt('Enter Peer Name (optional):') || peerAddress.split(':')[0];
+    const peerPublicKey = prompt('Enter Peer Public Key (32 bytes Base64, optional - can be added later):') || '';
+    
+    // Basic validation (32 bytes = 44 Base64 chars)
+    if (peerPublicKey && peerPublicKey.length !== 44) {
+        showToast('Invalid public key format. Should be 32 bytes Base64 (44 characters). Peer node added without key.', 'warning');
+    }
+    
+    try {
+        const currentResponse = await fetch('/api/v1/peer-sync/config');
+        const currentConfig = await currentResponse.json();
+        
+        if (currentConfig.peer_nodes.includes(peerAddress)) {
+            showToast('Peer node already exists', 'error');
+            return;
+        }
+        
+        const peerIp = peerAddress.split(':')[0];
+        const peerNodes = [...currentConfig.peer_nodes, peerAddress];
+        const peerPublicKeys = { ...currentConfig.peer_public_keys };
+        
+        // Add/update peer public key
+        if (peerPublicKey) {
+            peerPublicKeys[peerIp] = {
+                name: peerName,
+                public_key: peerPublicKey
+            };
+        } else if (!peerPublicKeys[peerIp]) {
+            // Create entry without public key if it doesn't exist
+            peerPublicKeys[peerIp] = {
+                name: peerName,
+                public_key: ''
+            };
+        } else {
+            // Update name if public key already exists
+            peerPublicKeys[peerIp].name = peerName;
+        }
+        
+        const config = {
+            ...currentConfig,
+            peer_nodes: peerNodes,
+            peer_public_keys: peerPublicKeys
+        };
+        
+        const response = await fetch('/api/v1/peer-sync/config', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        });
+        
+        if (!response.ok) throw new Error('Failed to add peer node');
+        
+        input.value = '';
+        showToast('Peer node added', 'success');
+        await loadPeerSyncConfig();
+    } catch (error) {
+        showToast('Error adding peer node: ' + error.message, 'error');
+    }
+}
+
+// Remove peer node
+async function removePeerNode(peerAddress) {
+    try {
+        const currentResponse = await fetch('/api/v1/peer-sync/config');
+        const currentConfig = await currentResponse.json();
+        
+        const peerNodes = currentConfig.peer_nodes.filter(p => p !== peerAddress);
+        const peerIp = peerAddress.split(':')[0];
+        
+        // Also remove peer public key if exists
+        const peerPublicKeys = { ...currentConfig.peer_public_keys };
+        if (peerPublicKeys[peerIp]) {
+            delete peerPublicKeys[peerIp];
+        }
+        
+        const config = {
+            ...currentConfig,
+            peer_nodes: peerNodes,
+            peer_public_keys: peerPublicKeys
+        };
+        
+        const response = await fetch('/api/v1/peer-sync/config', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        });
+        
+        if (!response.ok) throw new Error('Failed to remove peer node');
+        
+        showToast('Peer node removed', 'success');
+        await loadPeerSyncConfig();
+    } catch (error) {
+        showToast('Error removing peer node: ' + error.message, 'error');
+    }
+}
+
+// Note: addPeerKey, savePeerKey, removePeerKey functions removed
+// Peer keys are now managed together with peer nodes in addPeerNode/updatePeerKey
+
+// Load Peer-Sync status
+async function loadPeerSyncStatus() {
+    try {
+        const response = await fetch('/api/v1/peer-sync/status');
+        if (!response.ok) throw new Error('Failed to load peer-sync status');
+        const status = await response.json();
+        
+        // Update overview
+        const overview = document.getElementById('peerSyncOverview');
+        overview.innerHTML = `
+            <div style="border: 1px solid #ddd; padding: 15px; border-radius: 4px; text-align: center;">
+                <div style="font-size: 2em; font-weight: bold; color: #4CAF50;">${status.overview.total_successful_syncs || 0}</div>
+                <div style="color: #666;">Successful Syncs</div>
+            </div>
+            <div style="border: 1px solid #ddd; padding: 15px; border-radius: 4px; text-align: center;">
+                <div style="font-size: 2em; font-weight: bold; color: #f44336;">${status.overview.total_failed_syncs || 0}</div>
+                <div style="color: #666;">Failed Syncs</div>
+            </div>
+            <div style="border: 1px solid #ddd; padding: 15px; border-radius: 4px; text-align: center;">
+                <div style="font-size: 2em; font-weight: bold; color: #2196F3;">${status.overview.overall_success_rate || 0}%</div>
+                <div style="color: #666;">Success Rate</div>
+            </div>
+            <div style="border: 1px solid #ddd; padding: 15px; border-radius: 4px; text-align: center;">
+                <div style="font-size: 1.5em; font-weight: bold; color: #FF9800;">${status.overview.average_sync_duration_ms || 0}ms</div>
+                <div style="color: #666;">Avg Sync Duration</div>
+            </div>
+        `;
+        
+        // Update peer status table
+        const tbody = document.getElementById('peerStatusTableBody');
+        tbody.innerHTML = '';
+        status.peer_statuses.forEach(peer => {
+            const row = document.createElement('tr');
+            const statusBadge = peer.status === 'success' ? 
+                '<span style="background-color: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px;">Success</span>' :
+                '<span style="background-color: #f44336; color: white; padding: 4px 8px; border-radius: 4px;">Error</span>';
+            
+            row.innerHTML = `
+                <td style="padding: 10px; border: 1px solid #ddd;">${peer.peer_name}</td>
+                <td style="padding: 10px; border: 1px solid #ddd;">${peer.peer_ip}</td>
+                <td style="padding: 10px; border: 1px solid #ddd;">${statusBadge}</td>
+                <td style="padding: 10px; border: 1px solid #ddd;">${peer.last_sync ? new Date(peer.last_sync).toLocaleString() : 'Never'}</td>
+                <td style="padding: 10px; border: 1px solid #ddd;">${peer.success_rate}%</td>
+                <td style="padding: 10px; border: 1px solid #ddd;">
+                    <button class="btn btn-secondary" onclick="testPeerConnection('${peer.peer_ip}')">Test</button>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+        
+        // Update sync events table
+        const eventsTbody = document.getElementById('syncEventsTableBody');
+        eventsTbody.innerHTML = '';
+        status.recent_events.forEach(event => {
+            const row = document.createElement('tr');
+            const statusBadge = event.status === 'success' ? 
+                '<span style="background-color: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px;">Success</span>' :
+                '<span style="background-color: #f44336; color: white; padding: 4px 8px; border-radius: 4px;">Error</span>';
+            
+            row.innerHTML = `
+                <td style="padding: 10px; border: 1px solid #ddd;">${new Date(event.timestamp).toLocaleString()}</td>
+                <td style="padding: 10px; border: 1px solid #ddd;">${event.peer_name}</td>
+                <td style="padding: 10px; border: 1px solid #ddd;">${statusBadge}</td>
+                <td style="padding: 10px; border: 1px solid #ddd;">${event.duration_ms}ms</td>
+                <td style="padding: 10px; border: 1px solid #ddd;">${event.details || ''}</td>
+            `;
+            eventsTbody.appendChild(row);
+        });
+        
+    } catch (error) {
+        console.error('Error loading peer-sync status:', error);
+        showToast('Error loading peer-sync status: ' + error.message, 'error');
+    }
+}
+
+// Trigger manual sync
+async function triggerPeerSync() {
+    try {
+        const response = await fetch('/api/v1/peer-sync/sync-now', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        
+        if (!response.ok) throw new Error('Failed to trigger sync');
+        
+        const result = await response.json();
+        showToast(`Sync completed: ${result.synced_peers.length} peers synced`, 'success');
+        await loadPeerSyncStatus();
+    } catch (error) {
+        showToast('Error triggering sync: ' + error.message, 'error');
+    }
+}
+
+// Test peer connection
+async function testPeerConnection(peer) {
+    try {
+        const response = await fetch('/api/v1/peer-sync/test-connection', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ peer: peer })
+        });
+        
+        if (!response.ok) throw new Error('Failed to test connection');
+        
+        const result = await response.json();
+        showToast(`Connection test: ${result.success ? 'Success' : 'Failed'} (${result.latency_ms}ms)`, result.success ? 'success' : 'error');
+        await loadPeerSyncStatus();
+    } catch (error) {
+        showToast('Error testing connection: ' + error.message, 'error');
+    }
+}
+
+// Copy to clipboard
+function copyToClipboard(elementId) {
+    const element = document.getElementById(elementId);
+    element.select();
+    document.execCommand('copy');
+    showToast('Copied to clipboard', 'success');
+}
+
+// Note: addPeerPublicKey, savePeerPublicKey, removePeerPublicKey functions removed
+// Replaced with: addPeerKey, savePeerKey, removePeerKey
+
+// Load Peer-Sync config when tab is opened
+document.addEventListener('DOMContentLoaded', function() {
+    // Add event listener for tab switch
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', function() {
+            const targetTab = this.getAttribute('data-tab');
+            if (targetTab === 'peer-sync') {
+                loadPeerSyncConfig();
+                loadPeerSyncStatus();
+            }
+        });
+    });
+});

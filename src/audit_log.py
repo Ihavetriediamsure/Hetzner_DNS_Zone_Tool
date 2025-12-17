@@ -38,10 +38,26 @@ class AuditAction(str, Enum):
     RECORD_DELETE = "record_delete"
     AUTO_UPDATE_ENABLE = "auto_update_enable"
     AUTO_UPDATE_DISABLE = "auto_update_disable"
+    AUTO_UPDATE_TOKEN_MISSING = "auto_update_token_missing"
+    AUTO_UPDATE_ZONE_ACCESS_DENIED = "auto_update_zone_access_denied"
+    IP_UPDATE_SPLIT_BRAIN_DETECTED = "ip_update_split_brain_detected"
     TTL_UPDATE = "ttl_update"
     COMMENT_UPDATE = "comment_update"
     IP_UPDATE = "ip_update"
     MONITOR_IP_OFFLINE = "monitor_ip_offline"
+    MONITOR_IP_ONLINE = "monitor_ip_online"
+    MONITOR_IP_STATUS_CHECK = "monitor_ip_status_check"
+    # Peer-Sync Actions
+    PEER_SYNC_ENABLE = "peer_sync_enable"
+    PEER_SYNC_DISABLE = "peer_sync_disable"
+    PEER_SYNC_CONFIG_UPDATE = "peer_sync_config_update"
+    PEER_SYNC_PEER_ADD = "peer_sync_peer_add"
+    PEER_SYNC_PEER_REMOVE = "peer_sync_peer_remove"
+    PEER_SYNC_PEER_KEY_UPDATE = "peer_sync_peer_key_update"
+    PEER_SYNC_SUCCESS = "peer_sync_success"
+    PEER_SYNC_FAILURE = "peer_sync_failure"
+    PEER_SYNC_MANUAL_TRIGGER = "peer_sync_manual_trigger"
+    PEER_SYNC_CONNECTION_TEST = "peer_sync_connection_test"
 
 
 class AuditLog:

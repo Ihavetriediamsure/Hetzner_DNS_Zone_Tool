@@ -2,6 +2,9 @@
 
 import os
 import yaml
+import hashlib
+import json
+import time
 from pathlib import Path
 from typing import Dict, Optional, Any
 
@@ -33,13 +36,59 @@ class LocalIPStorage:
             self._storage["local_ips"] = {}
         if "settings" not in self._storage:
             self._storage["settings"] = {}
+        if "generation" not in self._storage:
+            self._storage["generation"] = {
+                "sequence": 0,
+                "node_id": self._get_node_id(),
+                "timestamp": time.time(),
+                "content_hash": ""
+            }
+            # Calculate initial content hash
+            self._storage["generation"]["content_hash"] = self._calculate_content_hash(self._storage)
         
         return self._storage
+    
+    def _get_node_id(self) -> str:
+        """Get node ID (WireGuard IP or hostname)"""
+        # Try to get WireGuard IP from environment or use hostname
+        wg_ip = os.getenv("WIREGUARD_IP")
+        if wg_ip:
+            return wg_ip
+        import socket
+        return socket.gethostname()
+    
+    def _calculate_content_hash(self, config_data: Dict) -> str:
+        """Calculate hash of config content (without generation field)"""
+        config_copy = config_data.copy()
+        config_copy.pop('generation', None)  # Remove generation for hash
+        content_str = json.dumps(config_copy, sort_keys=True)
+        return hashlib.sha256(content_str.encode()).hexdigest()
+    
+    def _increment_generation(self) -> None:
+        """Increment generation counter when config changes"""
+        if self._storage is None:
+            self._load_storage()
+        
+        if "generation" not in self._storage:
+            self._storage["generation"] = {
+                "sequence": 0,
+                "node_id": self._get_node_id(),
+                "timestamp": time.time(),
+                "content_hash": ""
+            }
+        
+        # Increment sequence
+        self._storage["generation"]["sequence"] = self._storage["generation"].get("sequence", 0) + 1
+        self._storage["generation"]["timestamp"] = time.time()
+        self._storage["generation"]["content_hash"] = self._calculate_content_hash(self._storage)
     
     def _save_storage(self) -> None:
         """Save storage to YAML file"""
         if self._storage is None:
             self._storage = {"local_ips": {}}
+        
+        # Increment generation before saving (if config changed)
+        self._increment_generation()
         
         try:
             self.storage_path.parent.mkdir(parents=True, exist_ok=True)

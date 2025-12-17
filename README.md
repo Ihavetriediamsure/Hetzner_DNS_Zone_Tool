@@ -67,6 +67,7 @@ who need reliable DNS IP automation without relying on external SaaS services.
     - Hetzner API tokens
     - 2FA secrets
     - Backup codes
+    - Peer-sync private keys (X25519)
   - Encryption using Fernet (AES-128)
 
 ---
@@ -93,11 +94,27 @@ who need reliable DNS IP automation without relying on external SaaS services.
   - Encrypted token storage
   - Token validation and test functionality
   - Support for legacy and current Hetzner APIs
+  - **Important:** API tokens must be manually configured on each peer and are not synchronized
 - Flexible configuration options:
   - YAML-based configuration files
   - Environment variable overrides
   - Docker-optimized configuration with persistent volumes
   - Suitable for local and containerized deployments
+
+### 🔄 Peer-to-Peer Synchronization
+- **Peer-Sync** functionality for multi-instance deployments:
+  - Automatic synchronization of zone configurations (TTL, Monitor IP, auto-update settings)
+  - Secure peer-to-peer communication using X25519 key exchange
+  - End-to-end encryption (AES-256-GCM) for configuration data
+  - Public keys in compact format (32 bytes Base64)
+  - Encrypted private key storage (Fernet encryption)
+  - Split-brain protection to prevent conflicting DNS updates
+  - Configurable sync intervals, timeouts, and retry logic
+  - Rate limiting and connection pooling for efficient communication
+  - Comprehensive monitoring and metrics (sync duration, success rate, peer status)
+  - NTP synchronization support for accurate timestamps
+  - Automatic conflict resolution using generation counters
+  - **Security Note:** API tokens are NOT synchronized and must be configured manually on each peer
 
 ---
 

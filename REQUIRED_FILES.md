@@ -61,6 +61,20 @@ The application uses the following priority order for file storage:
 - **Permissions:** `600` (read/write for owner only)
 - **Important:** This file **must be backed up**. Without it, encrypted data cannot be decrypted.
 
+#### `.peer_sync_x25519_key`
+
+- **Path (Docker):** `/config/.peer_sync_x25519_key`
+- **Path (Local):** `~/.hetzner-dns/.peer_sync_x25519_key`
+- **Description:** X25519 private key for peer-to-peer synchronization (encrypted with Fernet)
+- **Contents:** Encrypted X25519 private key
+- **Created:** On first peer-sync activation or when manually regenerated
+- **Permissions:** `600` (read/write for owner only)
+- **Important:** 
+  - This file is encrypted using the same Fernet key as other sensitive data (`.encryption_key`)
+  - The private key is stored in encrypted format (not plaintext)
+  - Public keys are stored in compact format (32 bytes Base64) in `config.yaml`
+  - **Must be backed up** if peer-sync is used
+
 ---
 
 ### 3. Log Files
@@ -130,24 +144,26 @@ The application uses the following priority order for file storage:
 
 ```
 /config/
-├── config.yaml          # Main configuration
-├── auth.yaml            # Authentication (created during setup)
-├── .encryption_key      # Encryption key
-├── audit.log            # Audit log
-├── local_ips.yaml       # Local IPs, auto-update, TTLs (optional)
-└── auto_update.yaml     # Auto-update configuration (optional)
+├── config.yaml              # Main configuration (includes peer-sync settings)
+├── auth.yaml                # Authentication (created during setup)
+├── .encryption_key          # Encryption key (Fernet)
+├── .peer_sync_x25519_key   # Peer-sync private key (encrypted, optional)
+├── audit.log                # Audit log
+├── local_ips.yaml           # Local IPs, auto-update, TTLs (optional)
+└── auto_update.yaml         # Auto-update configuration (optional)
 ```
 
 ### Local Installation
 
 ```
 ~/.hetzner-dns/
-├── config.yaml          # Main configuration
-├── auth.yaml            # Authentication (created during setup)
-├── .encryption_key      # Encryption key
-├── audit.log            # Audit log
-├── local_ips.yaml       # Local IPs, auto-update, TTLs (optional)
-└── auto_update.yaml     # Auto-update configuration (optional)
+├── config.yaml              # Main configuration (includes peer-sync settings)
+├── auth.yaml                # Authentication (created during setup)
+├── .encryption_key          # Encryption key (Fernet)
+├── .peer_sync_x25519_key   # Peer-sync private key (encrypted, optional)
+├── audit.log                # Audit log
+├── local_ips.yaml           # Local IPs, auto-update, TTLs (optional)
+└── auto_update.yaml         # Auto-update configuration (optional)
 ```
 
 ---
@@ -159,6 +175,7 @@ The application uses the following priority order for file storage:
 1. **`.encryption_key`** - Without this file, encrypted data cannot be decrypted
 2. **`auth.yaml`** - Contains all user accounts
 3. **`config.yaml`** - Contains all configuration and encrypted API tokens
+4. **`.peer_sync_x25519_key`** - Peer-sync private key (if peer-sync is used)
 
 ### Important (Recommended Backup)
 
@@ -174,6 +191,7 @@ The application uses the following priority order for file storage:
 
 - **`config.yaml`** is automatically created (with default values)
 - **`.encryption_key`** is automatically created (on first encryption access)
+- **`.peer_sync_x25519_key`** is automatically created (on first peer-sync activation)
 - **`auth.yaml`** is **NOT** created automatically
 
 ### After Initial Setup
@@ -194,6 +212,7 @@ ENCRYPTION_KEY_PATH=/custom/path/.encryption_key
 AUDIT_LOG_FILE=/custom/path/audit.log
 LOCAL_IP_STORAGE_PATH=/custom/path/local_ips.yaml
 AUTO_UPDATE_CONFIG_PATH=/custom/path/auto_update.yaml
+# Note: .peer_sync_x25519_key path is determined by the same directory as .encryption_key
 ```
 
 ---
@@ -223,6 +242,7 @@ All sensitive files should be protected with permission **`600`** (owner read/wr
 - `config.yaml`
 - `auth.yaml`
 - `.encryption_key`
+- `.peer_sync_x25519_key`
 - `audit.log`
 
 The application will attempt to enforce these permissions automatically.
@@ -233,6 +253,7 @@ The application will attempt to enforce these permissions automatically.
 
 - **`config.yaml`**: Automatically created with default values
 - **`.encryption_key`**: Automatically generated if missing
+- **`.peer_sync_x25519_key`**: Automatically generated when peer-sync is first activated
 - **`auth.yaml`**: Must be created via initial setup (no default admin)
 - **`audit.log`**: Automatically created when the first log entry is written
 - **`local_ips.yaml`**: Automatically created when the first record configuration is saved
@@ -253,5 +274,8 @@ The application will attempt to enforce these permissions automatically.
 1. **Never lose `.encryption_key`** — encrypted data becomes unrecoverable
 2. **`auth.yaml`** contains password hashes and must be protected
 3. **`config.yaml`** contains encrypted API tokens and must be protected
-4. All files should be readable/writable by the owner only (`600`)
-5. For Docker deployments, ensure the `/config` volume is accessible only by the container
+4. **`.peer_sync_x25519_key`** contains the encrypted private key for peer-sync and must be protected
+5. **API tokens are NOT synchronized** — each peer must have its own API tokens configured manually
+6. **Public keys can be shared** — X25519 public keys (stored in `config.yaml`) can be safely shared between peers
+7. All files should be readable/writable by the owner only (`600`)
+8. For Docker deployments, ensure the `/config` volume is accessible only by the container

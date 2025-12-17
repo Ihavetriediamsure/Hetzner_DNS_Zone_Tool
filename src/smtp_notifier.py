@@ -144,6 +144,8 @@ class SMTPNotifier:
             'ip_blacklist_remove': 'IP Blacklist Removed',
             'ip_blacklist_toggle': 'IP Blacklist Toggled',
             'monitor_ip_offline': 'Monitor IP Offline',
+            'monitor_ip_online': 'Monitor IP Online',
+            'monitor_ip_status_check': 'Monitor IP Status Check',
             'token_add': 'API Token Added',
             'token_delete': 'API Token Deleted',
             'token_update': 'API Token Updated',
@@ -154,10 +156,24 @@ class SMTPNotifier:
             'record_delete': 'DNS Record Deleted',
             'auto_update_enable': 'Auto-Update Enabled',
             'auto_update_disable': 'Auto-Update Disabled',
+            'auto_update_token_missing': 'Auto-Update Token Missing',
+            'auto_update_zone_access_denied': 'Auto-Update Zone Access Denied',
+            'ip_update_split_brain_detected': 'IP Update Split-Brain Detected',
             'ttl_update': 'TTL Updated',
             'comment_update': 'Comment Updated',
             'ip_update': 'IP Address Updated',
             'brute_force_config_update': 'Brute-Force Config Updated',
+            # Peer-Sync Events
+            'peer_sync_enable': 'Peer Sync Enabled',
+            'peer_sync_disable': 'Peer Sync Disabled',
+            'peer_sync_config_update': 'Peer Sync Config Updated',
+            'peer_sync_peer_add': 'Peer Added',
+            'peer_sync_peer_remove': 'Peer Removed',
+            'peer_sync_peer_key_update': 'Peer Key Updated',
+            'peer_sync_success': 'Peer Sync Success',
+            'peer_sync_failure': 'Peer Sync Failure',
+            'peer_sync_manual_trigger': 'Peer Sync Manual Trigger',
+            'peer_sync_connection_test': 'Peer Connection Test',
         }
         return event_names.get(event_type, event_type.replace('_', ' ').title())
     
