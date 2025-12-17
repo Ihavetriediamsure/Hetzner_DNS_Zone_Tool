@@ -58,3 +58,9 @@ backups/
 .DS_Store
 Thumbs.db
 
+# Helper scripts (not for repository)
+*.sh
+!*.sh.example
+PUSH_TO_GITHUB.md
+DELETE_DOCKER_IMAGE_YML.md
+
