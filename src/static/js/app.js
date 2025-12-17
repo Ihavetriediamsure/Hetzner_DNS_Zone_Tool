@@ -3628,9 +3628,9 @@ async function loadPeerSyncConfig() {
                     method: 'GET'
                 });
                 
-                // Test connection latency
+                // Test connection latency (without audit logging for automatic checks)
                 const latencyStart = performance.now();
-                const testResponse = await fetch(`/api/v1/peer-sync/test-connection`, {
+                const testResponse = await fetch(`/api/v1/peer-sync/test-connection?log_to_audit=false`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ peer: peerAddress })

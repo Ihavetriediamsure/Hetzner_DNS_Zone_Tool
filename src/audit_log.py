@@ -144,8 +144,12 @@ class AuditLog:
         if ip is None and request is not None:
             ip = self._get_client_ip(request)
         
+        # Use more precise timestamp with milliseconds
+        now = datetime.utcnow()
+        timestamp = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"  # Include milliseconds
+        
         log_entry = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": timestamp,
             "action": action.value,
             "username": username or "unknown",
             "ip": ip or "unknown",

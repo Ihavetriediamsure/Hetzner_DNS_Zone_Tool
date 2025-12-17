@@ -2897,8 +2897,17 @@ async def trigger_auto_sync_endpoint(request: Request):
 
 
 @app.post("/api/v1/peer-sync/test-connection")
-async def test_peer_connection(request: Request, test_request: PeerSyncTestConnectionRequest):
-    """Test connection to a peer"""
+async def test_peer_connection(request: Request, test_request: PeerSyncTestConnectionRequest, log_to_audit: bool = True):
+    """Test connection to a peer
+    
+    Args:
+        log_to_audit: If True, log the test to audit log (default: True).
+                      Set to False for automatic/background tests.
+    """
+    # Check if log_to_audit is explicitly set to False via query parameter
+    query_log_to_audit = request.query_params.get("log_to_audit", "true").lower() == "true"
+    if not query_log_to_audit:
+        log_to_audit = False
     if not request.session.get("authenticated", False):
         raise HTTPException(status_code=401, detail="Not authenticated")
     
@@ -2920,16 +2929,18 @@ async def test_peer_connection(request: Request, test_request: PeerSyncTestConne
         
         success = response.status_code == 200
         
-        audit_log.log(
-            action=AuditAction.PEER_SYNC_CONNECTION_TEST,
-            username=username,
-            request=request,
-            success=success,
-            details={
-                "peer": test_request.peer,
-                "latency_ms": round(latency_ms, 2)
-            }
-        )
+        # Only log to audit if explicitly requested (manual tests)
+        if log_to_audit:
+            audit_log.log(
+                action=AuditAction.PEER_SYNC_CONNECTION_TEST,
+                username=username,
+                request=request,
+                success=success,
+                details={
+                    "peer": test_request.peer,
+                    "latency_ms": round(latency_ms, 2)
+                }
+            )
         
         return {
             "success": success,
@@ -2938,14 +2949,16 @@ async def test_peer_connection(request: Request, test_request: PeerSyncTestConne
         }
     except Exception as e:
         logger.error(f"Error testing peer connection: {e}")
-        audit_log.log(
-            action=AuditAction.PEER_SYNC_CONNECTION_TEST,
-            username=username,
-            request=request,
-            success=False,
-            error=str(e),
-            details={"peer": test_request.peer}
-        )
+        # Only log to audit if explicitly requested (manual tests)
+        if log_to_audit:
+            audit_log.log(
+                action=AuditAction.PEER_SYNC_CONNECTION_TEST,
+                username=username,
+                request=request,
+                success=False,
+                error=str(e),
+                details={"peer": test_request.peer}
+            )
         raise HTTPException(status_code=500, detail=f"Error testing peer connection: {str(e)}")
 
 
