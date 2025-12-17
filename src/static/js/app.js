@@ -574,7 +574,7 @@ async function loadZoneRRSets(zoneId, zoneName, tokenId = null) {
                 const savedPort = rrset.port || '';
                 tableHTML += `<div style="display: flex; gap: 5px; align-items: center;">`;
                 tableHTML += `<input type="text" class="local-ip-input" placeholder="e.g. 192.168.1.100" value="${escapeHtml(savedLocalIP)}" data-rrset-id="${rrsetId}" data-zone-id="${zoneId}" style="flex: 1;" onchange="saveLocalIPWithPort('${zoneId}', '${rrsetId}'); startAutomaticHealthChecks('${zoneId}');">`;
-                tableHTML += `<input type="number" class="local-ip-port-input" placeholder="Port" value="${escapeHtml(savedPort)}" data-rrset-id="${rrsetId}" data-zone-id="${zoneId}" min="1" max="65535" style="width: 80px;" onchange="saveLocalIPWithPort('${zoneId}', '${rrsetId}'); startAutomaticHealthChecks('${zoneId}');">`;
+                tableHTML += `<input type="number" class="local-ip-port-input" placeholder="Port" value="${escapeHtml(savedPort)}" data-rrset-id="${rrsetId}" data-zone-id="${zoneId}" min="1" max="65535" style="width: 100px;" onchange="saveLocalIPWithPort('${zoneId}', '${rrsetId}'); startAutomaticHealthChecks('${zoneId}');">`;
                 tableHTML += `</div>`;
             }
             tableHTML += '</td>';
