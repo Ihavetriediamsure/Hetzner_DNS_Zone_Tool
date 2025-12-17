@@ -193,8 +193,10 @@ class SplitBrainProtection:
                     params["port"] = port
                 
                 # Sign request with HMAC-SHA256 (using our public key)
+                # Use only the path + query string (not full URL) to match verification logic
                 query_string = "&".join([f"{k}={v}" for k, v in params.items()])
-                full_url = f"{url}?{query_string}" if query_string else url
+                url_path = "/api/v1/peer-sync/check-monitor-ip"
+                full_url = f"{url_path}?{query_string}" if query_string else url_path
                 request_data = f"GET:{full_url}".encode()
                 
                 # Sign with our public key bytes (for HMAC)
