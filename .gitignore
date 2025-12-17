@@ -63,4 +63,6 @@ Thumbs.db
 !*.sh.example
 PUSH_TO_GITHUB.md
 DELETE_DOCKER_IMAGE_YML.md
+DOCKER_PUBLISH.md
+REMOVE_SH_FILES.md
 

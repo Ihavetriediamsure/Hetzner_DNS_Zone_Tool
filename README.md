@@ -202,33 +202,6 @@ docker run -d \
   ghcr.io/ihavetriediamsure/hetzner_dns_zone_tool:latest
 ```
 
-### Pulling from Private Repository
-
-If your repository is private, you need to authenticate first:
-
-1. **Create a GitHub Personal Access Token:**
-   - Go to GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)
-   - Click "Generate new token (classic)"
-   - Select scope: `read:packages`
-   - Copy the token
-
-2. **Login to GitHub Container Registry:**
-   ```bash
-   echo $GITHUB_TOKEN | docker login ghcr.io -u Ihavetriediamsure --password-stdin
-   ```
-   Or set the token as environment variable first:
-   ```bash
-   export GITHUB_TOKEN="your-token-here"
-   echo $GITHUB_TOKEN | docker login ghcr.io -u Ihavetriediamsure --password-stdin
-   ```
-
-3. **Pull the image:**
-   ```bash
-   docker pull ghcr.io/ihavetriediamsure/hetzner_dns_zone_tool:latest
-   ```
-
-**Note:** Once you make the repository public, the Docker image will automatically become public and no authentication is needed.
-
 ### Configuration
 
 The `docker-compose.yml` file is pre-configured and ready to use. Key settings:
