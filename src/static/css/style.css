@@ -689,8 +689,8 @@ input[type="password"]:focus {
 }
 
 .local-ip-cell {
-    min-width: 200px;
-    max-width: 280px;
+    min-width: 250px;
+    max-width: 320px;
 }
 
 .local-ip-input {
@@ -716,6 +716,8 @@ input[type="password"]:focus {
     font-size: 0.9em;
     font-family: monospace;
     box-sizing: border-box;
+    height: 100%;
+    align-self: stretch;
 }
 
 .local-ip-port-input:focus {
