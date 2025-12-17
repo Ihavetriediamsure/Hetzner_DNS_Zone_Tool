@@ -429,28 +429,28 @@ class PeerSync:
                 logger.debug(f"Rate limit exceeded for peer {peer}")
                 return None
             
-            # Check if we have peer's key
-            if peer_ip not in self.peer_keys:
-                logger.warning(f"Missing key for peer {peer_ip}")
+            # Check if we have peer's X25519 public key
+            if peer_ip not in self.peer_x25519_keys:
+                logger.warning(f"Missing X25519 public key for peer {peer_ip}")
                 return None
             
-            peer_key = self.peer_keys[peer_ip]
+            peer_x25519_pub = self.peer_x25519_keys[peer_ip]
             
-            if not self._peer_key:
-                logger.warning("Own peer key not loaded")
+            if not self.x25519_private_key or not self.x25519_public_key:
+                logger.warning("Own X25519 keys not loaded")
                 return None
             
             try:
-                # Sign request with HMAC-SHA256
+                # Sign request with HMAC-SHA256 using our public key
                 url = f"http://{peer}/api/v1/sync/local-ips"
                 request_data = f"GET:{url}".encode()
-                signature = self._sign_data(request_data, self._peer_key)
+                signature = self._sign_data(request_data)
                 
-                # Get our key ID (use peer IP as identifier)
-                our_key_id = peer_ip  # We use peer IP as key ID for identification
+                # Get our public key as Base64 for authentication
+                our_public_key_b64 = self.get_public_key_base64()
                 
                 headers = {
-                    "X-Peer-Key-ID": our_key_id,
+                    "X-Peer-Public-Key": our_public_key_b64,
                     "X-Peer-Signature": signature
                 }
                 
@@ -461,21 +461,8 @@ class PeerSync:
                     response_data = response.json()
                     
                     # Get peer's public key from response header (if provided)
-                    peer_public_key_b64 = response.headers.get("X-Peer-Public-Key", "")
-                    if peer_public_key_b64:
-                        try:
-                            peer_public_key_bytes = base64.b64decode(peer_public_key_b64)
-                            peer_x25519_pub = serialization.load_pem_public_key(peer_public_key_bytes)
-                            if not isinstance(peer_x25519_pub, x25519.X25519PublicKey):
-                                logger.warning(f"Invalid X25519 public key type from peer {peer_ip}")
-                                return None
-                        except Exception as e:
-                            logger.warning(f"Failed to decode peer public key: {e}")
-                            # Use cached public key
-                            peer_x25519_pub = self.peer_x25519_keys[peer_ip]
-                    else:
-                        # Use cached public key
-                        peer_x25519_pub = self.peer_x25519_keys[peer_ip]
+                    # Use cached public key (we already have it from config)
+                    peer_x25519_pub = self.peer_x25519_keys[peer_ip]
                     
                     # Verify signature of encrypted data
                     encrypted_data = response_data.get("encrypted_data", "")

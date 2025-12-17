@@ -53,6 +53,7 @@ from src.peer_auth import verify_peer_signature, verify_peer_signature_for_body
 from pydantic import BaseModel
 from typing import Optional, List, Dict
 import logging
+import httpx
 
 # Configure logging
 logging.basicConfig(
