@@ -3519,24 +3519,32 @@ async function loadPeerSyncConfig() {
         if (!response.ok) throw new Error('Failed to load peer-sync config');
         const config = await response.json();
         
-        // Update UI - ensure element exists before setting
+        // Update UI - ensure elements exist before setting
         const enabledCheckbox = document.getElementById('peerSyncEnabled');
         if (enabledCheckbox) {
-            enabledCheckbox.checked = config.enabled || false;
+            enabledCheckbox.checked = Boolean(config.enabled);
+            console.log('Set peerSyncEnabled to:', Boolean(config.enabled), 'from config:', config.enabled);
         } else {
             console.warn('peerSyncEnabled checkbox not found, retrying in 100ms...');
             setTimeout(() => {
                 const retryCheckbox = document.getElementById('peerSyncEnabled');
                 if (retryCheckbox) {
-                    retryCheckbox.checked = config.enabled || false;
+                    retryCheckbox.checked = Boolean(config.enabled);
+                    console.log('Set peerSyncEnabled (retry) to:', Boolean(config.enabled));
                 }
             }, 100);
         }
-        document.getElementById('peerSyncInterval').value = config.interval;
-        document.getElementById('peerSyncTimeout').value = config.timeout;
-        document.getElementById('peerSyncMaxRetries').value = config.max_retries;
-        document.getElementById('peerSyncRateLimit').value = config.rate_limit;
-        document.getElementById('peerSyncNtpEnabled').checked = config.ntp_enabled;
+        
+        const intervalInput = document.getElementById('peerSyncInterval');
+        if (intervalInput) intervalInput.value = config.interval;
+        const timeoutInput = document.getElementById('peerSyncTimeout');
+        if (timeoutInput) timeoutInput.value = config.timeout;
+        const maxRetriesInput = document.getElementById('peerSyncMaxRetries');
+        if (maxRetriesInput) maxRetriesInput.value = config.max_retries;
+        const rateLimitInput = document.getElementById('peerSyncRateLimit');
+        if (rateLimitInput) rateLimitInput.value = config.rate_limit;
+        const ntpCheckbox = document.getElementById('peerSyncNtpEnabled');
+        if (ntpCheckbox) ntpCheckbox.checked = Boolean(config.ntp_enabled);
         
         // Load peer nodes with keys (combined)
         const peerNodesList = document.getElementById('peerNodesList');
