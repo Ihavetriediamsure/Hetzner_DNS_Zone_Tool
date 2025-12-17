@@ -533,7 +533,12 @@ async function loadZoneRRSets(zoneId, zoneName, tokenId = null) {
             // Die IP aus dem DNS-Record (nicht die Server-IP) - für A/AAAA Records
             const dnsRecordIP = records.length > 0 && isIPRecord ? records[0] : null;
             const autoUpdateEnabled = rrset.auto_update_enabled || false;
-            const ttlValue = rrset.ttl_override !== undefined ? rrset.ttl_override : (rrset.ttl || null);
+            // Use TTL override if explicitly set, otherwise use TTL from DNS record
+            // If ttl_override is undefined (not set), use the current DNS record TTL
+            // If ttl_override is null (explicitly cleared), also use DNS record TTL
+            const ttlValue = (rrset.ttl_override !== undefined && rrset.ttl_override !== null) 
+                ? rrset.ttl_override 
+                : (rrset.ttl || 3600);
             const existsInDNS = rrset.exists_in_dns !== false; // Default to true if not specified
             
             // Add red background class if record doesn't exist in DNS
@@ -626,12 +631,18 @@ async function loadZoneRRSets(zoneId, zoneName, tokenId = null) {
                 tableHTML += `<span style="color: #dc3545;">${ttlValue ? ttlValue + 's' : '-'}</span>`;
             } else {
                 const allowedTTLValues = [60, 300, 600, 1800, 3600, 86400];
+                const currentTTL = ttlValue ? parseInt(ttlValue) : 3600;
                 const ttlOptions = allowedTTLValues.map(val => {
-                    const selected = (ttlValue && parseInt(ttlValue) === val) ? 'selected' : '';
+                    const selected = (currentTTL === val) ? 'selected' : '';
                     const label = val === 60 ? '60s (1 Min)' : val === 300 ? '300s (5 Min)' : val === 600 ? '600s (10 Min)' : val === 1800 ? '1800s (30 Min)' : val === 3600 ? '3600s (1 Hour)' : '86400s (1 Day)';
                     return `<option value="${val}" ${selected}>${label}</option>`;
                 }).join('');
-                tableHTML += `<select class="ttl-input" data-rrset-id="${rrsetIdEscaped}" data-zone-id="${zoneIdEscaped}" onchange="saveTTL('${zoneId}', '${rrsetId.replace(/'/g, "\\'")}', this.value)" style="width: 100%; padding: 4px; border: 1px solid #ddd; border-radius: 4px;">${ttlOptions}</select>`;
+                // If current TTL is not in allowed values, add it as an option
+                let customTTLOption = '';
+                if (currentTTL && !allowedTTLValues.includes(currentTTL)) {
+                    customTTLOption = `<option value="${currentTTL}" selected>${currentTTL}s (Custom)</option>`;
+                }
+                tableHTML += `<select class="ttl-input" data-rrset-id="${rrsetIdEscaped}" data-zone-id="${zoneIdEscaped}" onchange="saveTTL('${zoneId}', '${rrsetId.replace(/'/g, "\\'")}', this.value)" style="width: 100%; padding: 4px; border: 1px solid #ddd; border-radius: 4px;">${customTTLOption}${ttlOptions}</select>`;
             }
             tableHTML += '</td>';
             
