@@ -534,9 +534,9 @@ async function loadZoneRRSets(zoneId, zoneName, tokenId = null) {
             const dnsRecordIP = records.length > 0 && isIPRecord ? records[0] : null;
             const autoUpdateEnabled = rrset.auto_update_enabled || false;
             // Use TTL override if explicitly set, otherwise use TTL from DNS record
-            // If ttl_override is undefined (not set), use the current DNS record TTL
-            // If ttl_override is null (explicitly cleared), also use DNS record TTL
-            const ttlValue = (rrset.ttl_override !== undefined && rrset.ttl_override !== null) 
+            // If ttl_override is null/undefined (not set), use the current DNS record TTL
+            // Always use DNS record TTL unless an override is explicitly set
+            const ttlValue = (rrset.ttl_override !== null && rrset.ttl_override !== undefined) 
                 ? rrset.ttl_override 
                 : (rrset.ttl || 3600);
             const existsInDNS = rrset.exists_in_dns !== false; // Default to true if not specified
@@ -634,7 +634,7 @@ async function loadZoneRRSets(zoneId, zoneName, tokenId = null) {
                 const currentTTL = ttlValue ? parseInt(ttlValue) : 3600;
                 const ttlOptions = allowedTTLValues.map(val => {
                     const selected = (currentTTL === val) ? 'selected' : '';
-                    const label = val === 60 ? '60s (1 Min)' : val === 300 ? '300s (5 Min)' : val === 600 ? '600s (10 Min)' : val === 1800 ? '1800s (30 Min)' : val === 3600 ? '3600s (1 Hour)' : '86400s (1 Day)';
+                    const label = `${val}s`;
                     return `<option value="${val}" ${selected}>${label}</option>`;
                 }).join('');
                 // If current TTL is not in allowed values, add it as an option
@@ -1778,12 +1778,12 @@ async function showCreateRecordDialog(zoneId, zoneName, tokenId = null) {
             <div style="margin-bottom: 20px;">
                 <label style="display: block; margin-bottom: 5px; font-weight: bold;">TTL (seconds):</label>
                 <select id="newRecordTTL" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                    <option value="60">60s (1 Minute)</option>
-                    <option value="300">300s (5 Minutes)</option>
-                    <option value="600">600s (10 Minutes)</option>
-                    <option value="1800">1800s (30 Minutes)</option>
-                    <option value="3600" selected>3600s (1 Hour)</option>
-                    <option value="86400">86400s (1 Day)</option>
+                    <option value="60">60s</option>
+                    <option value="300">300s</option>
+                    <option value="600">600s</option>
+                    <option value="1800">1800s</option>
+                    <option value="3600" selected>3600s</option>
+                    <option value="86400">86400s</option>
                 </select>
             </div>
             
@@ -1970,12 +1970,12 @@ function showEditRecordDialog(zoneId, rrsetId, recordName, recordType, currentRe
             <div style="margin-bottom: 20px;">
                 <label style="display: block; margin-bottom: 5px; font-weight: bold;">TTL (seconds):</label>
                 <select id="editRecordTTL" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                    <option value="60" ${currentTTL === 60 ? 'selected' : ''}>60s (1 Minute)</option>
-                    <option value="300" ${currentTTL === 300 ? 'selected' : ''}>300s (5 Minutes)</option>
-                    <option value="600" ${currentTTL === 600 ? 'selected' : ''}>600s (10 Minutes)</option>
-                    <option value="1800" ${currentTTL === 1800 ? 'selected' : ''}>1800s (30 Minutes)</option>
-                    <option value="3600" ${currentTTL === 3600 || !currentTTL ? 'selected' : ''}>3600s (1 Hour)</option>
-                    <option value="86400" ${currentTTL === 86400 ? 'selected' : ''}>86400s (1 Day)</option>
+                    <option value="60" ${currentTTL === 60 ? 'selected' : ''}>60s</option>
+                    <option value="300" ${currentTTL === 300 ? 'selected' : ''}>300s</option>
+                    <option value="600" ${currentTTL === 600 ? 'selected' : ''}>600s</option>
+                    <option value="1800" ${currentTTL === 1800 ? 'selected' : ''}>1800s</option>
+                    <option value="3600" ${currentTTL === 3600 || !currentTTL ? 'selected' : ''}>3600s</option>
+                    <option value="86400" ${currentTTL === 86400 ? 'selected' : ''}>86400s</option>
                 </select>
             </div>
             
