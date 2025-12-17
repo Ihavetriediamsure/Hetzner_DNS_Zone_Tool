@@ -222,6 +222,7 @@ class AuditLogConfigRequest(BaseModel):
 class PeerSyncConfigResponse(BaseModel):
     """Peer-Sync Configuration Response"""
     enabled: bool
+    auto_sync_enabled: bool
     peer_nodes: List[str]
     interval: int
     timeout: int
@@ -233,6 +234,7 @@ class PeerSyncConfigResponse(BaseModel):
 class PeerSyncConfigRequest(BaseModel):
     """Peer-Sync Configuration Request"""
     enabled: bool
+    auto_sync_enabled: bool
     peer_nodes: List[str]
     interval: int = Field(ge=60, le=3600, description="Sync interval in seconds")
     timeout: int = Field(ge=1, le=30, description="Request timeout in seconds")

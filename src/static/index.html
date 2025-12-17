@@ -470,16 +470,22 @@
                 <div style="margin-bottom: 15px;">
                     <label style="display: flex; align-items: center; gap: 10px;">
                         <input type="checkbox" id="peerSyncEnabled" onchange="togglePeerSync()">
-                        <span>Peer Sync aktivieren</span>
+                        <span>Enable Peer Sync</span>
+                    </label>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="peerSyncAutoSyncEnabled" onchange="savePeerSyncConfig()">
+                        <span>Enable Automatic Sync (sync on every change)</span>
                     </label>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
                     <div>
-                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Sync-Intervall (Sekunden):</label>
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Sync Interval (seconds):</label>
                         <input type="number" id="peerSyncInterval" min="60" max="3600" value="300" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
                     </div>
                     <div>
-                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Request Timeout (Sekunden):</label>
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Request Timeout (seconds):</label>
                         <input type="number" id="peerSyncTimeout" min="1" max="30" value="5" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
                     </div>
                 </div>
@@ -496,7 +502,7 @@
                 <div style="margin-bottom: 15px;">
                     <label style="display: flex; align-items: center; gap: 10px;">
                         <input type="checkbox" id="peerSyncNtpEnabled" onchange="savePeerSyncConfig()">
-                        <span>NTP-Synchronisation aktivieren</span>
+                        <span>Enable NTP Synchronization</span>
                     </label>
                 </div>
                 <button class="btn btn-primary" onclick="savePeerSyncConfig()">Save Settings</button>

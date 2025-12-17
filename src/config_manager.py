@@ -465,6 +465,7 @@ class ConfigManager:
             },
             'peer_sync': {
                 'enabled': False,
+                'auto_sync_enabled': False,  # Automatically sync on every change
                 'peer_nodes': [],
                 'interval': 300,
                 'timeout': 5,

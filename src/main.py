@@ -54,6 +54,7 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict
 import logging
 import httpx
+import asyncio
 
 # Configure logging
 logging.basicConfig(
@@ -61,6 +62,18 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+async def trigger_auto_sync_if_enabled():
+    """Trigger auto-sync if enabled (non-blocking)"""
+    try:
+        peer_sync = get_peer_sync()
+        if peer_sync._enabled and peer_sync.is_auto_sync_enabled():
+            # Trigger sync in background (non-blocking)
+            asyncio.create_task(peer_sync.sync_with_all_peers())
+            logger.debug("Auto-sync triggered")
+    except Exception as e:
+        logger.warning(f"Failed to trigger auto-sync: {e}")
 
 
 @asynccontextmanager
@@ -921,6 +934,9 @@ async def set_public_ip(request: SetPublicIPRequest, http_request: Request):
                 details={"ip": "cleared", "source": "manual"}
             )
         
+        # Trigger auto-sync if enabled
+        await trigger_auto_sync_if_enabled()
+        
         return {"success": True, "ip": request.ip, "message": "IP gespeichert" if request.ip else "Manuelle IP entfernt, automatische Erkennung aktiviert"}
     except HTTPException:
         raise
@@ -1178,6 +1194,9 @@ async def set_auto_update(zone_id: str, rrset_id: str, request: SetAutoUpdateReq
             details={"zone_id": zone_id, "rrset_id": rrset_id, "enabled": request.enabled}
         )
         
+        # Trigger auto-sync if enabled
+        await trigger_auto_sync_if_enabled()
+        
         return {"success": True, "enabled": request.enabled, "zone_id": zone_id, "rrset_id": rrset_id}
     except Exception as e:
         audit_log.log(
@@ -1240,6 +1259,9 @@ async def set_ttl(zone_id: str, rrset_id: str, request: SetTTLRequest, http_requ
             success=True,
             details={"zone_id": zone_id, "rrset_id": rrset_id, "ttl": request.ttl, "token_id": token_id}
         )
+        
+        # Trigger auto-sync if enabled
+        await trigger_auto_sync_if_enabled()
         
         return {"success": True, "ttl": request.ttl, "zone_id": zone_id, "rrset_id": rrset_id}
     except HTTPException:
@@ -1381,6 +1403,9 @@ async def set_ip(zone_id: str, rrset_id: str, request: SetIPRequest, http_reques
             )
         finally:
             await client.close()
+        
+        # Trigger auto-sync if enabled
+        await trigger_auto_sync_if_enabled()
         
         return {"success": True, "ip": request.ip, "zone_id": zone_id, "rrset_id": rrset_id}
     except HTTPException:
@@ -1644,6 +1669,9 @@ async def assign_server_ip(zone_id: str, rrset_id: str, request: Request, token_
                 details={"zone_id": zone_id, "rrset_id": rrset_id, "ip": public_ip, "token_id": token_id, "source": "server_ip"}
             )
             
+            # Trigger auto-sync if enabled
+            await trigger_auto_sync_if_enabled()
+            
             return {"rrset": updated_rrset.dict(), "assigned_ip": public_ip, "success": True}
         finally:
             await client.close()
@@ -1667,6 +1695,9 @@ async def save_local_ip(zone_id: str, rrset_id: str, request: SaveLocalIPRequest
         
         storage = get_local_ip_storage()
         storage.set_local_ip(zone_id, rrset_id, request.local_ip, port=request.port)
+        
+        # Trigger auto-sync if enabled
+        await trigger_auto_sync_if_enabled()
         
         return {"success": True, "local_ip": request.local_ip, "port": request.port, "zone_id": zone_id, "rrset_id": rrset_id}
     except HTTPException:
@@ -2563,6 +2594,7 @@ async def get_peer_sync_config(request: Request):
         
         return PeerSyncConfigResponse(
             enabled=peer_sync_config.get('enabled', False),
+            auto_sync_enabled=peer_sync_config.get('auto_sync_enabled', False),
             peer_nodes=peer_sync_config.get('peer_nodes', []),
             interval=peer_sync_config.get('interval', 300),
             timeout=peer_sync_config.get('timeout', 5),
@@ -2595,6 +2627,7 @@ async def update_peer_sync_config(request: Request, config_data: PeerSyncConfigR
         
         old_enabled = config['peer_sync'].get('enabled', False)
         config['peer_sync']['enabled'] = config_data.enabled
+        config['peer_sync']['auto_sync_enabled'] = config_data.auto_sync_enabled
         config['peer_sync']['peer_nodes'] = config_data.peer_nodes
         config['peer_sync']['interval'] = config_data.interval
         config['peer_sync']['timeout'] = config_data.timeout

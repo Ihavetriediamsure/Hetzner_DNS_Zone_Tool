@@ -80,6 +80,7 @@ class PeerSync:
     
     def __init__(self):
         self._enabled = False
+        self._auto_sync_enabled = False  # Automatically sync on every change
         self._peer_nodes: List[str] = []
         self._sync_interval = 300  # Default: 5 minutes
         self._timeout = 5  # Default: 5 seconds
@@ -127,6 +128,7 @@ class PeerSync:
             
             peer_sync_config = config.get('peer_sync', {})
             self._enabled = peer_sync_config.get('enabled', False)
+            self._auto_sync_enabled = peer_sync_config.get('auto_sync_enabled', False)
             self._peer_nodes = peer_sync_config.get('peer_nodes', [])
             self._sync_interval = peer_sync_config.get('interval', 300)
             self._timeout = peer_sync_config.get('timeout', 5)
@@ -135,6 +137,10 @@ class PeerSync:
             self._ntp_enabled = peer_sync_config.get('ntp_enabled', False)
         except Exception as e:
             logger.error(f"Failed to load peer-sync config: {e}")
+    
+    def is_auto_sync_enabled(self) -> bool:
+        """Check if auto-sync is enabled"""
+        return self._auto_sync_enabled
     
     def _load_or_generate_x25519_key(self):
         """Load or generate X25519 key pair (encrypted storage)"""
@@ -421,7 +427,7 @@ class PeerSync:
         
         # Create tasks for all peers (PARALLEL)
         async def sync_with_peer(peer: str) -> Optional[Dict]:
-            """Synchronize with a single peer (called in parallel)"""
+            """Synchronize with a single peer (bidirectional) - called in parallel"""
             peer_ip = peer.split(":")[0]
             
             # Check rate limit
@@ -441,67 +447,58 @@ class PeerSync:
                 return None
             
             try:
-                # Sign request with HMAC-SHA256 using our public key
-                # Use only the path (not full URL) to match verification logic
-                url = f"http://{peer}/api/v1/sync/local-ips"
-                url_path = "/api/v1/sync/local-ips"
-                request_data = f"GET:{url_path}".encode()
-                signature = self._sign_data(request_data)
-                
-                # Get our public key as Base64 for authentication
+                client = await self._get_client()
                 our_public_key_b64 = self.get_public_key_base64()
+                storage = get_local_ip_storage()
+                local_data = storage._load_storage()
+                local_gen = local_data.get('generation', {})
                 
-                headers = {
+                # Push our config to peer (POST only) - peer will check if we are newer
+                # Encrypt our config with peer's public key (ECDH)
+                encrypted_result = self._encrypt_config(local_data, peer_x25519_pub)
+                encrypted_data_b64 = encrypted_result["encrypted_data"]
+                nonce_b64 = encrypted_result["nonce"]
+                
+                # Sign encrypted data
+                sig_data = f"{encrypted_data_b64}:{nonce_b64}".encode()
+                signature = self._sign_data(sig_data)
+                
+                # Sign POST request
+                url_path = "/api/v1/sync/local-ips"
+                body_data = json.dumps({
+                    "encrypted_data": encrypted_data_b64,
+                    "nonce": nonce_b64,
+                    "generation": local_gen
+                }).encode()
+                body_hash = hashlib.sha256(body_data).hexdigest()
+                post_message = f"POST:{url_path}:{body_hash}".encode()
+                post_signature = self._sign_data(post_message)
+                
+                post_headers = {
                     "X-Peer-Public-Key": our_public_key_b64,
-                    "X-Peer-Signature": signature
+                    "X-Peer-Signature": post_signature,
+                    "Content-Type": "application/json"
                 }
                 
-                client = await self._get_client()
-                response = await client.get(url, headers=headers)
+                post_url = f"http://{peer}{url_path}"
+                post_response = await client.post(post_url, headers=post_headers, content=body_data)
                 
-                if response.status_code == 200:
-                    response_data = response.json()
-                    
-                    # Get peer's public key from response header (if provided)
-                    # Use cached public key (we already have it from config)
-                    peer_x25519_pub = self.peer_x25519_keys[peer_ip]
-                    
-                    # Verify signature of encrypted data
-                    encrypted_data = response_data.get("encrypted_data", "")
-                    nonce = response_data.get("nonce", "")
-                    response_signature = response.headers.get("X-Peer-Signature", "")
-                    
-                    # Verify signature with peer's public key
-                    sig_data = f"{encrypted_data}:{nonce}".encode()
-                    if not self._verify_signature(sig_data, response_signature, peer_x25519_pub):
-                        logger.warning(f"Invalid signature from peer {peer_ip}")
-                        return None
-                    
-                    # Decrypt config with derived shared secret (ECDH)
-                    peer_config = self._decrypt_config(encrypted_data, nonce, peer_x25519_pub)
-                    peer_gen = response_data.get('generation', {})
-                    
-                    # Get local config
-                    storage = get_local_ip_storage()
-                    local_data = storage._load_storage()
-                    local_gen = local_data.get('generation', {})
-                    
-                    # Check if peer is newer
-                    if is_newer(local_gen, peer_gen, local_data, peer_config):
-                        # Complete config takeover
-                        storage._storage = peer_config
-                        storage._save_storage()
-                        return {
-                            "peer": peer,
-                            "peer_name": self.peer_names.get(peer_ip, peer_ip),
-                            "merged": True
-                        }
+                if post_response.status_code == 200:
+                    post_result = post_response.json()
+                    merged = post_result.get("merged", False)
+                    if merged:
+                        logger.info(f"Peer {peer_ip} merged our config (we were newer)")
                     else:
-                        return {
-                            "peer": peer,
-                            "peer_name": self.peer_names.get(peer_ip, peer_ip),
-                            "merged": False
-                        }
+                        logger.info(f"Peer {peer_ip} rejected our config (peer was newer or same)")
+                    
+                    return {
+                        "peer": peer,
+                        "peer_name": self.peer_names.get(peer_ip, peer_ip),
+                        "merged": merged
+                    }
+                else:
+                    logger.warning(f"Failed to push config to peer {peer_ip}: {post_response.status_code}")
+                    return None
             except Exception as e:
                 logger.error(f"Error syncing with peer {peer}: {e}")
                 return None

@@ -1079,6 +1079,9 @@ async function saveLocalIPWithPort(zoneId, rrsetId, localIP = null, port = null)
         
         showToast('Monitor IP saved', 'success');
         
+        // Check auto-sync and warn if disabled
+        await checkAutoSyncAndWarn();
+        
         // Restart automatic health checks
         startAutomaticHealthChecks(zoneId);
         
@@ -3545,6 +3548,8 @@ async function loadPeerSyncConfig() {
         if (rateLimitInput) rateLimitInput.value = config.rate_limit;
         const ntpCheckbox = document.getElementById('peerSyncNtpEnabled');
         if (ntpCheckbox) ntpCheckbox.checked = Boolean(config.ntp_enabled);
+        const autoSyncCheckbox = document.getElementById('peerSyncAutoSyncEnabled');
+        if (autoSyncCheckbox) autoSyncCheckbox.checked = Boolean(config.auto_sync_enabled);
         
         // Load peer nodes with keys (combined)
         const peerNodesList = document.getElementById('peerNodesList');
@@ -3691,6 +3696,7 @@ async function savePeerSyncConfig() {
         
         const config = {
             enabled: document.getElementById('peerSyncEnabled').checked,
+            auto_sync_enabled: document.getElementById('peerSyncAutoSyncEnabled').checked,
             peer_nodes: currentConfig.peer_nodes || [],
             interval: parseInt(document.getElementById('peerSyncInterval').value),
             timeout: parseInt(document.getElementById('peerSyncTimeout').value),
@@ -4004,7 +4010,15 @@ async function loadPeerSyncStatus() {
 
 // Trigger manual sync
 async function triggerPeerSync() {
+    // Confirmation dialog
+    if (!confirm('Are you really the current peer? This will push your configuration to all peers.')) {
+        return;
+    }
+    
     try {
+        // Show "Sent to all peers" banner
+        showToast('Sending configuration to all peers...', 'info');
+        
         const response = await fetch('/api/v1/peer-sync/sync-now', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -4014,10 +4028,38 @@ async function triggerPeerSync() {
         if (!response.ok) throw new Error('Failed to trigger sync');
         
         const result = await response.json();
-        showToast(`Sync completed: ${result.synced_peers.length} peers synced`, 'success');
+        
+        // Check if all peers were successful
+        const allSuccessful = result.failed_peers.length === 0;
+        if (allSuccessful) {
+            showToast('All peers successfully synchronized', 'success');
+        } else {
+            showToast(`Sync completed: ${result.synced_peers.length} peers synced, ${result.failed_peers.length} failed`, 'warning');
+        }
+        
         await loadPeerSyncStatus();
     } catch (error) {
         showToast('Error triggering sync: ' + error.message, 'error');
+    }
+}
+
+// Check if auto-sync is enabled
+async function isAutoSyncEnabled() {
+    try {
+        const response = await fetch('/api/v1/peer-sync/config');
+        if (!response.ok) return false;
+        const config = await response.json();
+        return Boolean(config.enabled && config.auto_sync_enabled);
+    } catch (error) {
+        return false;
+    }
+}
+
+// Show warning if auto-sync is disabled
+async function checkAutoSyncAndWarn() {
+    const enabled = await isAutoSyncEnabled();
+    if (!enabled) {
+        alert('Automatic sync not enabled - attention');
     }
 }
 

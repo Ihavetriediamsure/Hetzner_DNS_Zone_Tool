@@ -15,12 +15,6 @@ services:
       - "8412:8000"
     
     volumes:
-      # Named volume for configuration files
+      # Bind mount for configuration files
       # All config files, auth data, and logs will be stored here
-      # Portainer will manage this volume automatically
-      - config:/config
-
-volumes:
-  # Named volume definition for Portainer compatibility
-  config:
-    driver: local
+      - /home/admin/Applications/Temp/config:/config
