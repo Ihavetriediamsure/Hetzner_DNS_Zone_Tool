@@ -442,8 +442,10 @@ class PeerSync:
             
             try:
                 # Sign request with HMAC-SHA256 using our public key
+                # Use only the path (not full URL) to match verification logic
                 url = f"http://{peer}/api/v1/sync/local-ips"
-                request_data = f"GET:{url}".encode()
+                url_path = "/api/v1/sync/local-ips"
+                request_data = f"GET:{url_path}".encode()
                 signature = self._sign_data(request_data)
                 
                 # Get our public key as Base64 for authentication
