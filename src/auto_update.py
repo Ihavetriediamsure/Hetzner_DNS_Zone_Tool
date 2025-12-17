@@ -58,7 +58,7 @@ class AutoUpdateService:
         errors = []
         
         current_ip = await get_public_ip()
-        client = HetznerDNSClient(use_new_api=True)
+        client = HetznerDNSClient()
         monitor = get_internal_ip_monitor()
         
         try:

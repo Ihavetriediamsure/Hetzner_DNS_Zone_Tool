@@ -65,7 +65,7 @@ class AutoUpdateService:
             logger.debug(f"Checking {len(zones_with_auto_update)} zone(s) with auto-update enabled: {zones_with_auto_update}")
             
             # Get all zones
-            client = HetznerDNSClient(use_new_api=True)
+            client = HetznerDNSClient()
             try:
                 all_zones = await client.list_zones()
                 
