@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DNS Zone Tool</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>DNS Zone Tool</h1>
+            <button id="logoutBtn" class="btn btn-secondary">Logout</button>
+        </header>
+
+        <nav class="tabs">
+            <button class="tab-btn active" data-tab="zones">DNS Zone</button>
+            <button class="tab-btn" data-tab="config">API Token Configuration</button>
+            <button class="tab-btn" data-tab="security">Security</button>
+            <button class="tab-btn" data-tab="audit-logs">Audit Logs</button>
+        </nav>
+
+        <!-- DNS Zone Tab -->
+        <div id="zonesTab" class="tab-content active">
+            <div class="zones-header">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="margin: 0;">DNS Zones</h2>
+                    <button id="refreshZonesBtn" class="btn btn-primary" onclick="refreshZones()">Refresh Zones</button>
+                </div>
+                <div class="public-ip-display">
+                    <div class="ip-info-group">
+                        <label class="ip-label">Public IP:</label>
+                        <span id="publicIpDisplay" class="ip-value">Loading...</span>
+                    </div>
+                    <div class="intervals-section">
+                        <h3 class="intervals-heading">Interval</h3>
+                        <div class="intervals-container">
+                            <div class="ip-info-group">
+                                <label class="ip-interval-label">Public IP Query:</label>
+                                <select id="publicIpInterval" class="ip-interval-select" onchange="savePublicIPInterval()" style="width: 150px; padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em;"></select>
+                            </div>
+                            <div class="ip-info-group">
+                                <label class="ip-interval-label">Monitor IP Status Check:</label>
+                                <select id="localIpStatusInterval" class="ip-interval-select" onchange="saveLocalIPStatusInterval()" style="width: 150px; padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em;"></select>
+                            </div>
+                            <div class="ip-info-group">
+                                <label class="ip-interval-label">Automatic Update Check:</label>
+                                <select id="autoUpdateInterval" class="ip-interval-select" onchange="saveAutoUpdateInterval()" style="width: 150px; padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em;"></select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="zonesList"></div>
+        </div>
+
+        <!-- Configuration Tab -->
+        <div id="configTab" class="tab-content">
+            <h2>API Token Configuration</h2>
+            
+            <!-- Machine Name Section -->
+            <div class="config-section" style="border: 1px solid #ddd; padding: 20px; margin-top: 20px; border-radius: 4px;">
+                <h3>Machine Name</h3>
+                <p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">The machine name is used in email notifications to identify the server (e.g. "my server").</p>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <input type="text" id="machineNameInput" placeholder="e.g. my server" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; max-width: 300px;">
+                    <button id="saveMachineNameBtn" class="btn btn-primary" onclick="saveMachineName()">Save</button>
+                </div>
+            </div>
+            
+            <!-- Saved Tokens Display -->
+            <div id="savedTokens" class="saved-tokens-section"></div>
+            
+            <!-- Add New Token Section -->
+            <div class="config-section" style="border: 2px dashed #ddd; padding: 20px; margin-top: 20px;">
+                <h3>Add New API Token</h3>
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px;">Token Name:</label>
+                    <input type="text" id="newTokenNameInput" placeholder="e.g. Production Token" style="width: 100%; padding: 8px; margin-bottom: 10px;">
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px;">API Token:</label>
+                    <input type="password" id="newTokenInput" placeholder="Enter Hetzner DNS API token" style="width: 100%; padding: 8px; margin-bottom: 10px;">
+                </div>
+                <button id="addTokenBtn" class="btn btn-primary">Add Token</button>
+            </div>
+            
+        </div>
+
+        <!-- Security Tab -->
+        <div id="securityTab" class="tab-content">
+            <h2>Security Configuration</h2>
+            
+            <!-- Password Change Section -->
+            <div class="config-section" style="border: 1px solid #ddd; padding: 20px; margin-top: 20px; border-radius: 4px;">
+                <h3>Change Password</h3>
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px;">Current Password:</label>
+                    <input type="password" id="currentPasswordInput" placeholder="Enter current password" style="width: 100%; padding: 8px; margin-bottom: 10px;">
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 5px;">New Password:</label>
+                    <input type="password" id="newPasswordInput" placeholder="Enter new password (min. 12 chars, with number, uppercase, special char)" minlength="12" style="width: 100%; padding: 8px; margin-bottom: 10px;">
+                </div>
+                <button id="changePasswordBtn" class="btn btn-primary">Change Password</button>
+            </div>
+            
+            <!-- 2FA Section -->
+            <div class="config-section" style="border: 1px solid #ddd; padding: 20px; margin-top: 20px; border-radius: 4px;">
+                <h3>Two-Factor Authentication (2FA)</h3>
+                <div id="2faStatus" style="margin-bottom: 15px;">
+                    <p>Status: <span id="2faStatusText">Loading...</span></p>
+                </div>
+                <div id="2faSetupSection" style="display: none;">
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Password (to verify):</label>
+                        <input type="password" id="2faPasswordInput" placeholder="Enter your password" style="width: 100%; padding: 8px; margin-bottom: 10px;">
+                    </div>
+                    <button id="setup2faBtn" class="btn btn-primary">Setup 2FA</button>
+                </div>
+                <div id="2faVerifySection" style="display: none;">
+                    <div style="margin-bottom: 10px;">
+                        <p>Scan this QR code with your authenticator app:</p>
+                        <img id="2faQRCode" src="" alt="QR Code" style="max-width: 200px; margin-bottom: 10px;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Enter 2FA token to verify:</label>
+                        <input type="text" id="2faTokenInput" placeholder="Enter 6-digit code" style="width: 100%; padding: 8px; margin-bottom: 10px;">
+                    </div>
+                    <button id="verify2faBtn" class="btn btn-primary">Verify & Enable 2FA</button>
+                </div>
+                <div id="2faBackupCodesSection" style="display: none; border: 1px solid #ddd; padding: 15px; margin-top: 15px; border-radius: 4px; background: #f9f9f9;">
+                    <h4 style="margin-top: 0;">Backup Codes</h4>
+                    <div id="backupCodesStatus" style="margin-bottom: 15px;">
+                        <p>Status: <span id="backupCodesStatusText">Loading...</span></p>
+                    </div>
+                    <p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">Backup codes can be used instead of your 2FA token if you lose access to your authenticator app. Generate new codes as needed.</p>
+                    <button id="generateBackupCodesBtn" class="btn btn-primary">Generate Backup Codes</button>
+                </div>
+                <div id="2faDisableSection" style="display: none;">
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px;">Password (to disable 2FA):</label>
+                        <input type="password" id="2faDisablePasswordInput" placeholder="Enter your password" style="width: 100%; padding: 8px; margin-bottom: 10px;">
+                    </div>
+                    <button id="disable2faBtn" class="btn btn-secondary">Disable 2FA</button>
+                </div>
+            </div>
+            
+            <!-- Brute-Force Protection Section -->
+            <div class="config-section" style="border: 1px solid #ddd; padding: 20px; margin-top: 20px; border-radius: 4px;">
+                <h3>Brute-Force Protection</h3>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="bruteForceEnabled" onchange="toggleBruteForce()">
+                        <span>Enable Brute-Force Protection</span>
+                    </label>
+                </div>
+                <div id="bruteForceSettings" style="display: none;">
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px;">Max Login Attempts:</label>
+                        <input type="number" id="maxLoginAttempts" min="1" max="20" value="5" style="width: 100px; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                        <small style="color: #666; margin-left: 10px;">Number of failed login attempts before lockout</small>
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px;">Max 2FA Attempts:</label>
+                        <input type="number" id="max2FAAttempts" min="1" max="10" value="3" style="width: 100px; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                        <small style="color: #666; margin-left: 10px;">Number of failed 2FA attempts before lockout</small>
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px;">Login Lockout Duration (minutes):</label>
+                        <input type="number" id="loginLockoutDuration" min="1" max="1440" value="15" style="width: 100px; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                        <small style="color: #666; margin-left: 10px;">Lockout duration after max login attempts</small>
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px;">2FA Lockout Duration (minutes):</label>
+                        <input type="number" id="2faLockoutDuration" min="1" max="1440" value="5" style="width: 100px; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                        <small style="color: #666; margin-left: 10px;">Lockout duration after max 2FA attempts</small>
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px;">Time Window (minutes):</label>
+                        <input type="number" id="timeWindow" min="1" max="1440" value="10" style="width: 100px; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                        <small style="color: #666; margin-left: 10px;">Time window for counting failed attempts</small>
+                    </div>
+                    <button id="saveBruteForceBtn" class="btn btn-primary" onclick="saveBruteForceSettings()">Save Settings</button>
+                </div>
+            </div>
+            
+            <!-- IP Access Control Section -->
+            <div class="config-section" style="border: 1px solid #ddd; padding: 20px; margin-top: 20px; border-radius: 4px;">
+                <h3>IP Access Control</h3>
+                
+                <!-- Whitelist -->
+                <div style="margin-bottom: 20px;">
+                    <h4>IP Whitelist</h4>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: flex; align-items: center; gap: 10px;">
+                            <input type="checkbox" id="whitelistEnabled" onchange="toggleWhitelist()">
+                            <span>Enable IP Whitelist</span>
+                        </label>
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <input type="text" id="whitelistIpInput" placeholder="IP or CIDR (e.g. 192.168.1.1 or 192.168.1.0/24)" style="width: 70%; padding: 8px; margin-right: 10px;">
+                        <button id="addWhitelistIpBtn" class="btn btn-primary" onclick="addWhitelistIp()">Add IP</button>
+                    </div>
+                    <div id="whitelistIpsList" style="margin-top: 10px;"></div>
+                </div>
+                
+                <!-- Blacklist -->
+                <div style="margin-bottom: 20px;">
+                    <h4>IP Blacklist</h4>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: flex; align-items: center; gap: 10px;">
+                            <input type="checkbox" id="blacklistEnabled" onchange="toggleBlacklist()">
+                            <span>Enable IP Blacklist</span>
+                        </label>
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <input type="text" id="blacklistIpInput" placeholder="IP or CIDR (e.g. 192.168.1.1 or 192.168.1.0/24)" style="width: 70%; padding: 8px; margin-right: 10px;">
+                        <button id="addBlacklistIpBtn" class="btn btn-primary" onclick="addBlacklistIp()">Add IP</button>
+                    </div>
+                    <div id="blacklistIpsList" style="margin-top: 10px;"></div>
+                </div>
+            </div>
+            
+            <!-- SMTP Email Notifications Section -->
+            <div class="config-section" style="border: 1px solid #ddd; padding: 20px; margin-top: 20px; border-radius: 4px;">
+                <h3>E-Mail Benachrichtigungen (SMTP)</h3>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="smtpEnabled" onchange="toggleSMTP()">
+                        <span>E-Mail-Benachrichtigungen aktivieren</span>
+                    </label>
+                </div>
+                <div id="smtpSettings" style="display: none;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">SMTP Host:</label>
+                            <input type="text" id="smtpHost" placeholder="smtp.example.com" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Port:</label>
+                            <input type="number" id="smtpPort" value="587" min="1" max="65535" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Benutzer:</label>
+                            <input type="text" id="smtpUser" placeholder="smtp@example.com" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Password:</label>
+                            <input type="password" id="smtpPassword" placeholder="Password (leave empty to keep current)" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        </div>
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: flex; align-items: center; gap: 10px;">
+                            <input type="checkbox" id="smtpUseTLS" checked>
+                            <span>TLS verwenden</span>
+                        </label>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">From-Adresse:</label>
+                            <input type="email" id="smtpFrom" placeholder="noreply@example.com" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">To-Adresse:</label>
+                            <input type="email" id="smtpTo" placeholder="admin@example.com" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 10px; font-weight: bold;">Events für E-Mail-Benachrichtigungen auswählen:</label>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 4px;">
+                            <label style="display: flex; align-items: center; gap: 5px;">
+                                <input type="checkbox" class="smtp-event-checkbox" value="login_success">
+                                <span>Login Success</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 5px;">
+                                <input type="checkbox" class="smtp-event-checkbox" value="login_failure">
+                                <span>Login Failure</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 5px;">
+                                <input type="checkbox" class="smtp-event-checkbox" value="logout">
+                                <span>Logout</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 5px;">
+                                <input type="checkbox" class="smtp-event-checkbox" value="password_change">
+                                <span>Password Change</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 5px;">
+                                <input type="checkbox" class="smtp-event-checkbox" value="2fa_setup">
+                                <span>2FA Setup</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 5px;">
+                                <input type="checkbox" class="smtp-event-checkbox" value="2fa_disable">
+                                <span>2FA Disable</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 5px;">
+                                <input type="checkbox" class="smtp-event-checkbox" value="2fa_verify_failure">
+                                <span>2FA Verify Failure</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 5px;">
+                                <input type="checkbox" class="smtp-event-checkbox" value="token_add">
+                                <span>Token Add</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 5px;">
+                                <input type="checkbox" class="smtp-event-checkbox" value="token_delete">
+                                <span>Token Delete</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 5px;">
+                                <input type="checkbox" class="smtp-event-checkbox" value="zone_create">
+                                <span>Zone Create</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 5px;">
+                                <input type="checkbox" class="smtp-event-checkbox" value="zone_delete">
+                                <span>Zone Delete</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 5px;">
+                                <input type="checkbox" class="smtp-event-checkbox" value="record_create">
+                                <span>Record Create</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 5px;">
+                                <input type="checkbox" class="smtp-event-checkbox" value="record_update">
+                                <span>Record Update</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 5px;">
+                                <input type="checkbox" class="smtp-event-checkbox" value="record_delete">
+                                <span>Record Delete</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 5px;">
+                                <input type="checkbox" class="smtp-event-checkbox" value="ip_update">
+                                <span>IP Update</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 5px;">
+                                <input type="checkbox" class="smtp-event-checkbox" value="ip_whitelist_add">
+                                <span>IP Whitelist Add</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 5px;">
+                                <input type="checkbox" class="smtp-event-checkbox" value="ip_blacklist_add">
+                                <span>IP Blacklist Add</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 5px;">
+                                <input type="checkbox" class="smtp-event-checkbox" value="monitor_ip_offline">
+                                <span>Monitor IP Offline</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <button id="saveSMTPBtn" class="btn btn-primary" onclick="saveSMTPConfig()">SMTP-Konfiguration speichern</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Audit Logs Tab -->
+        <div id="audit-logsTab" class="tab-content">
+            <h2>Audit Logs</h2>
+            
+            <!-- Filters Section -->
+            <div class="config-section" style="border: 1px solid #ddd; padding: 20px; margin-top: 20px; border-radius: 4px;">
+                <h3>Filters</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px;">
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Action Type:</label>
+                        <select id="auditLogActionFilter" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                            <option value="">All Actions</option>
+                            <option value="login_success">Login Success</option>
+                            <option value="login_failure">Login Failure</option>
+                            <option value="logout">Logout</option>
+                            <option value="password_change">Password Change</option>
+                            <option value="2fa_setup">2FA Setup</option>
+                            <option value="2fa_disable">2FA Disable</option>
+                            <option value="2fa_verify_success">2FA Verify Success</option>
+                            <option value="2fa_verify_failure">2FA Verify Failure</option>
+                            <option value="ip_whitelist_add">IP Whitelist Add</option>
+                            <option value="ip_whitelist_remove">IP Whitelist Remove</option>
+                            <option value="ip_whitelist_toggle">IP Whitelist Toggle</option>
+                            <option value="ip_blacklist_add">IP Blacklist Add</option>
+                            <option value="ip_blacklist_remove">IP Blacklist Remove</option>
+                            <option value="ip_blacklist_toggle">IP Blacklist Toggle</option>
+                            <option value="token_add">Token Add</option>
+                            <option value="token_delete">Token Delete</option>
+                            <option value="token_update">Token Update</option>
+                            <option value="zone_create">Zone Create</option>
+                            <option value="zone_delete">Zone Delete</option>
+                            <option value="record_create">Record Create</option>
+                            <option value="record_update">Record Update</option>
+                            <option value="record_delete">Record Delete</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Username:</label>
+                        <input type="text" id="auditLogUsernameFilter" placeholder="Filter by username" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Start Date:</label>
+                        <input type="datetime-local" id="auditLogStartDateFilter" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">End Date:</label>
+                        <input type="datetime-local" id="auditLogEndDateFilter" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Limit:</label>
+                        <input type="number" id="auditLogLimitFilter" value="100" min="10" max="1000" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    </div>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button id="applyAuditLogFiltersBtn" class="btn btn-primary" onclick="loadAuditLogs()">Apply Filters</button>
+                    <button id="clearAuditLogFiltersBtn" class="btn btn-secondary" onclick="clearAuditLogFilters()">Clear Filters</button>
+                    <button id="refreshAuditLogsBtn" class="btn btn-primary" onclick="loadAuditLogs()">Refresh</button>
+                </div>
+        </div>
+
+            <!-- Logs Display Section -->
+            <div class="config-section" style="border: 1px solid #ddd; padding: 20px; margin-top: 20px; border-radius: 4px;">
+                <h3>Log Entries</h3>
+                <div id="auditLogsDisplay" style="margin-top: 15px;">
+                    <p style="color: #666;">Loading logs...</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="/static/js/app.js"></script>
+    <script src="/static/js/auth.js"></script>
+</body>
+</html>
+

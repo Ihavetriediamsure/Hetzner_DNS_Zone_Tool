@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.git/
+.gitignore
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Documentation (keep only REQUIRED_FILES.md)
+*.md
+!REQUIRED_FILES.md
+
+# Backups and tests
+backups/
+tests/
+*.bak
+*.tmp
+
+# Sensitive files - NEVER include in image
+config/
+*.yaml
+*.yml
+*.key
+*.enc
+auth.yaml
+.encryption_key
+audit.log
+*.log
+local_ips.yaml
+auto_update.yaml
+
+# OS
+.DS_Store
+Thumbs.db
+

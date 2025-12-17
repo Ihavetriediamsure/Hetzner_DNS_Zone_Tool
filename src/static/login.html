@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DNS Zone Tool - Login</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-box">
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="username">Username:</label>
+                    <input type="text" id="username" name="username" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="password">Password:</label>
+                    <input type="password" id="password" name="password" required autocomplete="current-password">
+                </div>
+                <div class="form-group" id="totpGroup" style="display: none;">
+                    <label for="totp">2FA Code:</label>
+                    <input type="text" id="totp" name="totp" placeholder="000000" maxlength="6" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}">
+                    <div style="margin-top: 8px; font-size: 0.9em;">
+                        <a href="#" id="useBackupCodeLink" style="color: #007bff; text-decoration: none;">Use backup code instead</a>
+                    </div>
+                </div>
+                <div class="form-group" id="backupCodeGroup" style="display: none;">
+                    <label for="backupCode">Backup Code:</label>
+                    <input type="text" id="backupCode" name="backupCode" placeholder="Enter 32-character backup code" maxlength="32" autocomplete="off" style="font-family: monospace; letter-spacing: 1px;">
+                    <div style="margin-top: 8px; font-size: 0.9em;">
+                        <a href="#" id="use2FACodeLink" style="color: #007bff; text-decoration: none;">Use 2FA code instead</a>
+                    </div>
+                </div>
+                <div id="errorMessage" class="error-message" style="display: none;"></div>
+                <button type="submit" class="btn btn-primary">Sign In</button>
+            </form>
+        </div>
+    </div>
+    <script src="/static/js/auth.js"></script>
+</body>
+</html>
+
