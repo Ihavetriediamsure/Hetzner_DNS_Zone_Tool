@@ -524,7 +524,8 @@ async function loadZoneRRSets(zoneId, zoneName, tokenId = null) {
         tableHTML += '<th>Name</th>';
         tableHTML += '<th>Typ</th>';
         tableHTML += '<th>Auto-Update</th>';
-        tableHTML += '<th>Monitor IP / Port</th>';
+        tableHTML += '<th>Monitor IP</th>';
+        tableHTML += '<th>Port</th>';
         tableHTML += '<th>Status</th>';
         tableHTML += '<th>Public IP</th>';
         tableHTML += '<th>Current TTL</th>';
@@ -585,11 +586,18 @@ async function loadZoneRRSets(zoneId, zoneName, tokenId = null) {
             if (!existsInDNS) {
                 tableHTML += `<span style="color: #dc3545;">${escapeHtml(savedLocalIP || '-')}</span>`;
             } else {
+                tableHTML += `<input type="text" class="local-ip-input" placeholder="e.g. 192.168.1.100" value="${escapeHtml(savedLocalIP)}" data-rrset-id="${rrsetId}" data-zone-id="${zoneId}" style="width: 100%;" onchange="saveLocalIPWithPort('${zoneId}', '${rrsetId}'); startAutomaticHealthChecks('${zoneId}');">`;
+            }
+            tableHTML += '</td>';
+            
+            // Port Input
+            tableHTML += '<td class="local-ip-cell">';
+            if (!existsInDNS) {
                 const savedPort = rrset.port || '';
-                tableHTML += `<div style="display: flex; gap: 5px; align-items: stretch;">`;
-                tableHTML += `<input type="text" class="local-ip-input" placeholder="e.g. 192.168.1.100" value="${escapeHtml(savedLocalIP)}" data-rrset-id="${rrsetId}" data-zone-id="${zoneId}" style="flex: 1;" onchange="saveLocalIPWithPort('${zoneId}', '${rrsetId}'); startAutomaticHealthChecks('${zoneId}');">`;
+                tableHTML += `<span style="color: #dc3545;">${escapeHtml(savedPort || '-')}</span>`;
+            } else {
+                const savedPort = rrset.port || '';
                 tableHTML += `<input type="number" class="local-ip-port-input" placeholder="Port" value="${escapeHtml(savedPort)}" data-rrset-id="${rrsetId}" data-zone-id="${zoneId}" min="1" max="65535" style="width: 100px;" oninput="debouncePortInput('${zoneId}', '${rrsetId}');">`;
-                tableHTML += `</div>`;
             }
             tableHTML += '</td>';
             
