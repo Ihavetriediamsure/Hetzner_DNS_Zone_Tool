@@ -469,35 +469,24 @@
                 <h3>Sync Settings</h3>
                 <div style="margin-bottom: 15px;">
                     <label style="display: flex; align-items: center; gap: 10px;">
-                        <input type="checkbox" id="peerSyncEnabled" onchange="togglePeerSync()">
-                        <span>Enable Peer Sync</span>
-                    </label>
-                </div>
-                <div style="margin-bottom: 15px;">
-                    <label style="display: flex; align-items: center; gap: 10px;">
                         <input type="checkbox" id="peerSyncAutoSyncEnabled" onchange="savePeerSyncConfig()">
                         <span>Enable Automatic Sync (sync on every change)</span>
                     </label>
+                    <p style="color: #666; font-size: 0.9em; margin-top: 5px; margin-left: 28px;">When enabled, configuration changes are automatically synchronized to all peers.</p>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
-                    <div>
-                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Sync Interval (seconds):</label>
-                        <input type="number" id="peerSyncInterval" min="60" max="3600" value="300" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                    </div>
                     <div>
                         <label style="display: block; margin-bottom: 5px; font-weight: bold;">Request Timeout (seconds):</label>
                         <input type="number" id="peerSyncTimeout" min="1" max="30" value="5" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
                     </div>
-                </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
                     <div>
                         <label style="display: block; margin-bottom: 5px; font-weight: bold;">Max Retries:</label>
                         <input type="number" id="peerSyncMaxRetries" min="0" max="10" value="3" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
                     </div>
-                    <div>
-                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Rate Limit (req/sec):</label>
-                        <input type="number" id="peerSyncRateLimit" min="0.1" max="10" step="0.1" value="1" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                    </div>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Rate Limit (req/sec):</label>
+                    <input type="number" id="peerSyncRateLimit" min="0.1" max="10" step="0.1" value="1" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; max-width: 300px;">
                 </div>
                 <div style="margin-bottom: 15px;">
                     <label style="display: flex; align-items: center; gap: 10px;">

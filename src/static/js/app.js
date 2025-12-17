@@ -3522,24 +3522,16 @@ async function loadPeerSyncConfig() {
         if (!response.ok) throw new Error('Failed to load peer-sync config');
         const config = await response.json();
         
-        // Update UI - ensure elements exist before setting
-        const enabledCheckbox = document.getElementById('peerSyncEnabled');
-        if (enabledCheckbox) {
-            enabledCheckbox.checked = Boolean(config.enabled);
-            console.log('Set peerSyncEnabled to:', Boolean(config.enabled), 'from config:', config.enabled);
-        } else {
-            console.warn('peerSyncEnabled checkbox not found, retrying in 100ms...');
-            setTimeout(() => {
-                const retryCheckbox = document.getElementById('peerSyncEnabled');
-                if (retryCheckbox) {
-                    retryCheckbox.checked = Boolean(config.enabled);
-                    console.log('Set peerSyncEnabled (retry) to:', Boolean(config.enabled));
-                }
-            }, 100);
+        // Update UI - auto-sync enabled also enables peer sync
+        const autoSyncCheckbox = document.getElementById('peerSyncAutoSyncEnabled');
+        if (autoSyncCheckbox) {
+            autoSyncCheckbox.checked = Boolean(config.auto_sync_enabled);
+            // If auto-sync is enabled, peer sync must also be enabled
+            if (config.auto_sync_enabled && !config.enabled) {
+                // Auto-enable peer sync if auto-sync is enabled
+                config.enabled = true;
+            }
         }
-        
-        const intervalInput = document.getElementById('peerSyncInterval');
-        if (intervalInput) intervalInput.value = config.interval;
         const timeoutInput = document.getElementById('peerSyncTimeout');
         if (timeoutInput) timeoutInput.value = config.timeout;
         const maxRetriesInput = document.getElementById('peerSyncMaxRetries');
@@ -3548,8 +3540,6 @@ async function loadPeerSyncConfig() {
         if (rateLimitInput) rateLimitInput.value = config.rate_limit;
         const ntpCheckbox = document.getElementById('peerSyncNtpEnabled');
         if (ntpCheckbox) ntpCheckbox.checked = Boolean(config.ntp_enabled);
-        const autoSyncCheckbox = document.getElementById('peerSyncAutoSyncEnabled');
-        if (autoSyncCheckbox) autoSyncCheckbox.checked = Boolean(config.auto_sync_enabled);
         
         // Load peer nodes with keys (combined)
         const peerNodesList = document.getElementById('peerNodesList');
@@ -3757,10 +3747,7 @@ async function regeneratePeerKey() {
     }
 }
 
-// Toggle Peer-Sync
-async function togglePeerSync() {
-    await savePeerSyncConfig();
-}
+// Toggle Peer-Sync (removed - replaced by auto-sync checkbox)
 
 // Save Peer-Sync configuration
 async function savePeerSyncConfig() {
@@ -3769,11 +3756,16 @@ async function savePeerSyncConfig() {
         const currentResponse = await fetch('/api/v1/peer-sync/config');
         const currentConfig = await currentResponse.json();
         
+        const autoSyncEnabled = document.getElementById('peerSyncAutoSyncEnabled').checked;
+        
+        // If auto-sync is enabled, peer sync must also be enabled
+        const peerSyncEnabled = autoSyncEnabled || currentConfig.enabled;
+        
         const config = {
-            enabled: document.getElementById('peerSyncEnabled').checked,
-            auto_sync_enabled: document.getElementById('peerSyncAutoSyncEnabled').checked,
+            enabled: peerSyncEnabled,
+            auto_sync_enabled: autoSyncEnabled,
             peer_nodes: currentConfig.peer_nodes || [],
-            interval: parseInt(document.getElementById('peerSyncInterval').value),
+            interval: currentConfig.interval || 300,  // Keep interval in config but don't show in UI
             timeout: parseInt(document.getElementById('peerSyncTimeout').value),
             max_retries: parseInt(document.getElementById('peerSyncMaxRetries').value),
             rate_limit: parseFloat(document.getElementById('peerSyncRateLimit').value),
