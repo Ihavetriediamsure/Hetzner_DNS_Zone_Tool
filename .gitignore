@@ -37,6 +37,8 @@ env/
 config/
 *.yaml
 *.yml
+!docker-compose.yml
+!.github/**/*.yml
 *.key
 *.enc
 auth.yaml

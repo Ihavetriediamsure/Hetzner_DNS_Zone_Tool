@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  hetzner-dns-zone-tool:
+    # Pre-built image from GitHub Container Registry
+    image: ghcr.io/ihavetriediamsure/hetzner_dns_zone_tool:latest
+    
+    # Automatically restart container if it stops
+    restart: unless-stopped
+    
+    ports:
+      # Map container port 8000 to host port 8000
+      # Change the first number to use a different host port
+      # Example: "8080:8000" to access via http://localhost:8080
+      - "8000:8000"
+    
+    volumes:
+      # Mount local config directory to store all configuration files
+      # Replace /path/to/config with your actual path
+      # All config files, auth data, and logs will be stored here
+      - /path/to/config:/config
