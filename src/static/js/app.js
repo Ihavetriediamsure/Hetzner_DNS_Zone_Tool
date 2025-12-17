@@ -106,6 +106,12 @@ document.addEventListener('DOMContentLoaded', async function() {
                 loadAuditLogs();
                 loadAuditLogSettings();
             }
+            
+            // Load peer-sync config when peer-sync tab is opened
+            if (targetTab === 'peer-sync') {
+                loadPeerSyncConfig();
+                loadPeerSyncStatus();
+            }
         }
     }
     
