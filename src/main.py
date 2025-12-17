@@ -2827,11 +2827,16 @@ async def test_peer_connection(request: Request, test_request: PeerSyncTestConne
     
     try:
         import time
-        start_time = time.time()
+        # Create client first (outside timing)
+        client = httpx.AsyncClient(timeout=5.0)
         
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        # Measure only the actual request time
+        start_time = time.time()
+        try:
             response = await client.get(f"http://{test_request.peer}/health")
             latency_ms = (time.time() - start_time) * 1000
+        finally:
+            await client.aclose()
         
         success = response.status_code == 200
         
