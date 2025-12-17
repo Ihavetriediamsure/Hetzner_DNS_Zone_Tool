@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 async def verify_peer_signature(
     request: Request,
-    peer_public_key_b64: Optional[str] = Header(None, alias="X-Peer-Public-Key"),
-    signature_b64: Optional[str] = Header(None, alias="X-Peer-Signature")
+    peer_public_key_b64: Optional[str] = None,
+    signature_b64: Optional[str] = None
 ) -> Tuple[x25519.X25519PublicKey, str]:
     """
     Verify HMAC-SHA256 signature from peer using X25519 public key
@@ -26,6 +26,12 @@ async def verify_peer_signature(
     Raises:
         HTTPException if signature verification fails
     """
+    # Extract headers from request if not provided
+    if peer_public_key_b64 is None:
+        peer_public_key_b64 = request.headers.get("X-Peer-Public-Key")
+    if signature_b64 is None:
+        signature_b64 = request.headers.get("X-Peer-Signature")
+    
     if not peer_public_key_b64 or not signature_b64:
         raise HTTPException(status_code=403, detail="Missing peer authentication headers")
     
