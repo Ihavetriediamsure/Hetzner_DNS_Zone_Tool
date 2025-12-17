@@ -15,7 +15,12 @@ services:
       - "8000:8000"
     
     volumes:
-      # Mount local config directory to store all configuration files
-      # Replace /path/to/config with your actual path
+      # Named volume for configuration files
       # All config files, auth data, and logs will be stored here
-      - /path/to/config:/config
+      # Portainer will manage this volume automatically
+      - config:/config
+
+volumes:
+  # Named volume definition for Portainer compatibility
+  config:
+    driver: local
