@@ -35,6 +35,7 @@ ENV CONFIG_PATH=/config/config.yaml
 ENV AUTH_FILE=/config/auth.yaml
 ENV ENCRYPTION_KEY_PATH=/config/.encryption_key
 ENV AUDIT_LOG_FILE=/config/audit.log
+ENV LOCAL_IP_STORAGE_PATH=/config/local_ips.yaml
 ENV PYTHONUNBUFFERED=1
 
 # Expose port
