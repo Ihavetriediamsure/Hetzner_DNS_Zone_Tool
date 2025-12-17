@@ -488,14 +488,20 @@ class PeerSync:
                     merged = post_result.get("merged", False)
                     if merged:
                         logger.info(f"Peer {peer_ip} merged our config (we were newer)")
+                        return {
+                            "peer": peer,
+                            "peer_name": self.peer_names.get(peer_ip, peer_ip),
+                            "merged": True
+                        }
                     else:
                         logger.info(f"Peer {peer_ip} rejected our config (peer was newer or same)")
-                    
-                    return {
-                        "peer": peer,
-                        "peer_name": self.peer_names.get(peer_ip, peer_ip),
-                        "merged": merged
-                    }
+                        # Return special marker to indicate peer rejected (not an error)
+                        return {
+                            "peer": peer,
+                            "peer_name": self.peer_names.get(peer_ip, peer_ip),
+                            "merged": False,
+                            "rejected": True
+                        }
                 else:
                     logger.warning(f"Failed to push config to peer {peer_ip}: {post_response.status_code}")
                     return None
@@ -516,9 +522,21 @@ class PeerSync:
                 failed_peers.append(peer)
                 self._record_sync_event(peer, "error", 0, str(result))
             elif result:
-                synced_peers.append(result.get("peer_name", peer))
-                self._record_sync_event(peer, "success", 0, "Config synchronisiert")
+                # Check if peer rejected (peer was newer)
+                if result.get("rejected", False):
+                    # Peer rejected because it was newer - not an error, just info
+                    # Don't add to synced_peers or failed_peers
+                    self._record_sync_event(peer, "info", 0, "Peer rejected (peer was newer or same)")
+                elif result.get("merged", False):
+                    # Successfully merged
+                    synced_peers.append(result.get("peer_name", peer))
+                    self._record_sync_event(peer, "success", 0, "Config synchronisiert")
+                else:
+                    # Unknown result state
+                    failed_peers.append(peer)
+                    self._record_sync_event(peer, "error", 0, "Unknown sync result")
             else:
+                # No result (shouldn't happen with current logic)
                 failed_peers.append(peer)
                 self._record_sync_event(peer, "error", 0, "Sync fehlgeschlagen")
         
@@ -538,8 +556,12 @@ class PeerSync:
     
     def _record_sync_event(self, peer: str, status: str, duration_ms: float, details: str):
         """Record a sync event for statistics"""
+        # Use more precise timestamp with milliseconds
+        now = datetime.utcnow()
+        timestamp = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"  # Include milliseconds
+        
         event = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": timestamp,
             "peer_name": self.peer_names.get(peer.split(":")[0], peer),
             "status": status,
             "duration_ms": duration_ms,

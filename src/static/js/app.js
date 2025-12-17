@@ -4098,9 +4098,14 @@ async function loadPeerSyncStatus() {
         });
         sortedEvents.forEach(event => {
             const row = document.createElement('tr');
-            const statusBadge = event.status === 'success' ? 
-                '<span style="background-color: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px;">Success</span>' :
-                '<span style="background-color: #f44336; color: white; padding: 4px 8px; border-radius: 4px;">Error</span>';
+            let statusBadge;
+            if (event.status === 'success') {
+                statusBadge = '<span style="background-color: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px;">Success</span>';
+            } else if (event.status === 'info') {
+                statusBadge = '<span style="background-color: #2196F3; color: white; padding: 4px 8px; border-radius: 4px;">Info</span>';
+            } else {
+                statusBadge = '<span style="background-color: #f44336; color: white; padding: 4px 8px; border-radius: 4px;">Error</span>';
+            }
             
             row.innerHTML = `
                 <td style="padding: 10px; border: 1px solid #ddd;">${new Date(event.timestamp).toLocaleString()}</td>
