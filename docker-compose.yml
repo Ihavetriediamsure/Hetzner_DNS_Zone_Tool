@@ -9,10 +9,10 @@ services:
     restart: unless-stopped
     
     ports:
-      # Map container port 8000 to host port 8000
-      # Change the first number to use a different host port
-      # Example: "8080:8000" to access via http://localhost:8080
-      - "8000:8000"
+      # Map container port 8000 to host port 8412
+      # Changed to 8412 to avoid conflict with Portainer (which uses port 8000)
+      # Access the web interface via http://localhost:8412
+      - "8412:8000"
     
     volumes:
       # Named volume for configuration files
