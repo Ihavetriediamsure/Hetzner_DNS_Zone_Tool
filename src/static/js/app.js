@@ -3560,6 +3560,10 @@ async function loadPeerSyncConfig() {
         if (!response.ok) throw new Error('Failed to load peer-sync config');
         const config = await response.json();
         
+        // Load enabled state
+        const enabledCheckbox = document.getElementById('peerSyncEnabled');
+        if (enabledCheckbox) enabledCheckbox.checked = Boolean(config.enabled);
+        
         // auto_sync_enabled removed - enabled=true means always auto-sync on every change
         // max_retries and rate_limit removed - not needed when syncing on every change
         const timeoutInput = document.getElementById('peerSyncTimeout');
@@ -3853,8 +3857,9 @@ async function savePeerSyncConfig() {
         // max_retries and rate_limit removed - not needed when syncing on every change
         
         // Save peer_sync config (without NTP settings - they are in peer_sync_ntp.yaml)
+        const enabledCheckbox = document.getElementById('peerSyncEnabled');
         const config = {
-            enabled: currentConfig.enabled,
+            enabled: enabledCheckbox ? enabledCheckbox.checked : currentConfig.enabled,
             peer_nodes: currentConfig.peer_nodes || [],
             interval: currentConfig.interval || 300,  // Keep interval in config but don't show in UI
             timeout: parseFloat(document.getElementById('peerSyncTimeout').value) || 3.0,

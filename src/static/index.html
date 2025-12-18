@@ -467,11 +467,20 @@
             <!-- Sync Settings -->
             <div class="config-section" style="border: 1px solid #ddd; padding: 20px; margin-top: 20px; border-radius: 4px;">
                 <h3>Sync Settings</h3>
-                <div style="margin-bottom: 15px; padding: 10px; background-color: #e3f2fd; border-radius: 4px;">
-                    <p style="margin: 0; color: #1976d2; font-size: 0.9em;">
-                        <strong>ℹ️ Info:</strong> When Peer-Sync is enabled, configuration changes are automatically synchronized to all peers on every change.
-                    </p>
-                </div>
+            <div style="margin-bottom: 15px;">
+                <label style="display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="peerSyncEnabled" onchange="savePeerSyncConfig()">
+                    <span style="font-weight: bold;">Enable Peer-Sync</span>
+                </label>
+                <p style="margin: 5px 0 0 25px; color: #666; font-size: 0.85em;">
+                    When enabled, configuration changes are automatically synchronized to all peers on every change.
+                </p>
+            </div>
+            <div style="margin-bottom: 15px; padding: 10px; background-color: #e3f2fd; border-radius: 4px;">
+                <p style="margin: 0; color: #1976d2; font-size: 0.9em;">
+                    <strong>ℹ️ Info:</strong> When Peer-Sync is enabled, configuration changes are automatically synchronized to all peers on every change.
+                </p>
+            </div>
             <div style="margin-bottom: 15px;">
                 <label style="display: block; margin-bottom: 5px; font-weight: bold;">Request Timeout (seconds):</label>
                 <input type="number" id="peerSyncTimeout" min="1" max="30" step="0.1" value="3" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; max-width: 300px;">
