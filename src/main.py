@@ -217,14 +217,15 @@ async def ip_access_control_middleware(request: Request, call_next):
     if request.url.path.startswith("/static/"):
         return await call_next(request)
     
-    # Get client IP
-    client_ip = request.client.host if request.client else "127.0.0.1"
+    # Get client IP safely (validates X-Forwarded-For header)
+    from src.ip_utils import get_client_ip_safe
+    client_ip = get_client_ip_safe(request)
     
-    # Check X-Forwarded-For header (for reverse proxy)
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        # Take the first IP in the chain
-        client_ip = forwarded_for.split(",")[0].strip()
+    # Get fail mode from config
+    config = get_config_manager()
+    cfg = config.load_config()
+    security = cfg.get('security', {})
+    fail_mode = security.get('ip_access_control_fail_mode', 'close')  # Default: fail-close
     
     # Check IP access control
     try:
@@ -236,7 +237,17 @@ async def ip_access_control_middleware(request: Request, call_next):
             )
     except Exception as e:
         logger.error(f"Error checking IP access control: {e}")
-        # On error, allow access (fail open)
+        # Fail-close by default (deny access on error)
+        if fail_mode == 'open':
+            # Fail-open mode: allow access on error (less secure, but more permissive)
+            logger.warning("IP access control error - allowing access (fail-open mode)")
+        else:
+            # Fail-close mode: deny access on error (more secure, default)
+            logger.error("IP access control error - denying access (fail-close mode)")
+            return JSONResponse(
+                status_code=500,
+                content={"error": "Internal server error", "message": "IP access control check failed"}
+            )
     
     return await call_next(request)
 
@@ -534,11 +545,9 @@ async def login(request: Request, login_data: LoginRequest):
     brute_force = get_brute_force_protection()
     audit_log = get_audit_log()
     
-    # Get client IP
-    client_ip = request.client.host if request.client else "127.0.0.1"
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        client_ip = forwarded_for.split(",")[0].strip()
+    # Get client IP safely (validates X-Forwarded-For header)
+    from src.ip_utils import get_client_ip_safe
+    client_ip = get_client_ip_safe(request)
     
     # Check brute-force protection for login
     allowed, error_msg = brute_force.check_login_allowed(client_ip, login_data.username)

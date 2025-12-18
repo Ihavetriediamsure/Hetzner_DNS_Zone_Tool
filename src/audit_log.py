@@ -109,15 +109,9 @@ class AuditLog:
             pass
     
     def _get_client_ip(self, request) -> str:
-        """Extract client IP from request"""
-        client_ip = request.client.host if request.client else "127.0.0.1"
-        
-        # Check X-Forwarded-For header (for reverse proxy)
-        forwarded_for = request.headers.get("X-Forwarded-For")
-        if forwarded_for:
-            client_ip = forwarded_for.split(",")[0].strip()
-        
-        return client_ip
+        """Extract client IP from request (safely validates X-Forwarded-For)"""
+        from src.ip_utils import get_client_ip_safe
+        return get_client_ip_safe(request)
     
     def log(
         self,

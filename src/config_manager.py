@@ -434,6 +434,8 @@ class ConfigManager:
                     'enabled': False,
                     'allowed_ips': []
                 },
+                'trusted_proxy_ips': [],  # IPs of trusted reverse proxies (for X-Forwarded-For validation)
+                'ip_access_control_fail_mode': 'close',  # 'close' = deny on error, 'open' = allow on error
                 'brute_force_protection': {
                     'enabled': False,  # Disabled by default on initial start
                     'max_login_attempts': 5,

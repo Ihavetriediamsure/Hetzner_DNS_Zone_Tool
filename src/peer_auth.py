@@ -51,11 +51,9 @@ async def verify_peer_signature(
             if not isinstance(peer_public_key, x25519.X25519PublicKey):
                 raise ValueError("Invalid X25519 public key type")
         
-        # Get client IP (WireGuard IP)
-        client_ip = request.client.host if request.client else None
-        forwarded_for = request.headers.get("X-Forwarded-For")
-        if forwarded_for:
-            client_ip = forwarded_for.split(",")[0].strip()
+        # Get client IP safely (validates X-Forwarded-For header)
+        from src.ip_utils import get_client_ip_safe
+        client_ip = get_client_ip_safe(request)
         
         # Build message to verify
         method = request.method
