@@ -3937,13 +3937,13 @@ async function addPeerNode() {
     const peerAddress = input.value.trim();
     
     if (!peerAddress) {
-        showToast('Please enter a peer node (IP:Port)', 'error');
+        showToast('Please enter a peer address (e.g., 192.168.1.100:8412, https://peer.example.com:443)', 'error');
         return;
     }
     
-    // Validate format (IP:Port)
+    // Validate format - must contain ':' for port (supports IP:Port, http://IP:Port, https://domain:Port, domain:Port)
     if (!peerAddress.includes(':')) {
-        showToast('Invalid format. Please use IP:Port (e.g., 10.0.0.2:8412)', 'error');
+        showToast('Invalid format. Supported: IP:Port, http://IP:Port, https://domain:Port, domain:Port (e.g., 192.168.1.100:8412, https://peer.example.com:443)', 'error');
         return;
     }
     
@@ -3962,7 +3962,7 @@ async function addPeerNode() {
     row.id = `peerNodeRow_${peerIp}`;
     row.innerHTML = `
         <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em; font-family: inherit;">
-            <input type="text" id="peerAddress_${peerIp}" value="${peerAddress}" data-original="${peerAddress}" size="${Math.max(15, peerAddress.length + 2)}" style="padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em; font-family: inherit; box-sizing: border-box;">
+            <input type="text" id="peerAddress_${peerIp}" value="${peerAddress}" data-original="${peerAddress}" placeholder="e.g. 192.168.1.100:8412, https://peer.example.com:443" size="${Math.max(25, peerAddress.length + 2)}" style="padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em; font-family: inherit; box-sizing: border-box;">
         </td>
         <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em; font-family: inherit;">
             <input type="text" id="peerName_${peerIp}" value="${peerIp}" data-original="${peerIp}" size="${Math.max(12, peerIp.length + 2)}" style="padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em; font-family: inherit; box-sizing: border-box;">
@@ -4009,9 +4009,9 @@ async function savePeerNode(peerIp) {
         return;
     }
     
-    // Validate format (IP:Port)
+    // Validate format - must contain ':' for port (supports IP:Port, http://IP:Port, https://domain:Port, domain:Port)
     if (!peerAddress.includes(':')) {
-        showToast('Invalid format. Please use IP:Port (e.g., 10.0.0.2:8412)', 'error');
+        showToast('Invalid format. Supported: IP:Port, http://IP:Port, https://domain:Port, domain:Port (e.g., 192.168.1.100:8412, https://peer.example.com:443)', 'error');
         return;
     }
     
