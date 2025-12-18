@@ -248,7 +248,7 @@ async function loadZones() {
             }
         }
         
-        // Button zum Erstellen neuer Zonen
+        // Button to create new zones
         let zonesHTML = `
             <div style="margin-bottom: 8px;">
                 <button class="btn btn-primary" onclick="showCreateZoneDialog()" style="margin-bottom: 0;">
@@ -1704,7 +1704,7 @@ async function testApiTokens() {
         const contentType = response.headers.get('content-type');
         if (!contentType || !contentType.includes('application/json')) {
             const text = await response.text();
-            showToast('Ungültige Antwort vom Server', 'error');
+            showToast('Invalid response from server', 'error');
             console.error('Response is not JSON:', contentType, text);
             return;
         }
@@ -1729,7 +1729,7 @@ async function testApiTokens() {
                 oldTokenStatus.className = 'token-status invalid';
             }
         } else if (oldTokenStatus && !oldToken) {
-            // Token nicht eingegeben, Status zurücksetzen
+            // Token not entered, reset status
             oldTokenStatus.textContent = '';
             oldTokenStatus.className = 'token-status';
         }
@@ -1745,7 +1745,7 @@ async function testApiTokens() {
                 newTokenStatus.className = 'token-status invalid';
             }
         } else if (newTokenStatus && !newToken) {
-            // Token nicht eingegeben, Status zurücksetzen
+            // Token not entered, reset status
             newTokenStatus.textContent = '';
             newTokenStatus.className = 'token-status';
         }
@@ -3483,7 +3483,7 @@ async function saveSMTPConfig() {
             return;
         }
         if (!port || port < 1 || port > 65535) {
-            showToast('Ungültiger Port', 'error');
+            showToast('Invalid port', 'error');
             return;
         }
         if (!fromAddress) {
@@ -3868,7 +3868,7 @@ async function updateCurrentServerTime() {
         console.error('Error updating current server time:', error);
         const timeDisplay = document.getElementById('currentTimeDisplay');
         if (timeDisplay) {
-            timeDisplay.textContent = 'Fehler beim Laden';
+            timeDisplay.textContent = 'Error loading';
         }
     }
 }

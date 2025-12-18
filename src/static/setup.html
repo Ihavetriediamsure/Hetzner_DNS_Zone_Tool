@@ -216,7 +216,7 @@
                 const data = await response.json();
                 
                 if (response.ok && data.success) {
-                    successDiv.textContent = data.message || 'Setup erfolgreich abgeschlossen! Weiterleitung zum Login...';
+                    successDiv.textContent = data.message || 'Setup completed successfully! Redirecting to login...';
                     successDiv.style.display = 'block';
                     
                     // Redirect to login after 2 seconds

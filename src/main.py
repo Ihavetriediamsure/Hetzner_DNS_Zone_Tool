@@ -263,7 +263,7 @@ async def root():
     if os.path.exists(index_path):
         with open(index_path, 'r', encoding='utf-8') as f:
             return f.read()
-    return "<h1>Hetzner DNS Zone Tool</h1><p>Web-GUI wird geladen...</p>"
+    return "<h1>Hetzner DNS Zone Tool</h1><p>Web-GUI is loading...</p>"
 
 
 @app.get("/favicon.ico")
@@ -289,7 +289,7 @@ async def login_page():
     if os.path.exists(login_path):
         with open(login_path, 'r', encoding='utf-8') as f:
             return f.read()
-    return "<h1>Login</h1><p>Login-Seite wird geladen...</p>"
+    return "<h1>Login</h1><p>Login page is loading...</p>"
 
 
 @app.get("/setup", response_class=HTMLResponse)
@@ -299,7 +299,7 @@ async def setup_page():
     if os.path.exists(setup_path):
         with open(setup_path, 'r', encoding='utf-8') as f:
             return f.read()
-    return "<h1>Initial Setup</h1><p>Setup-Seite wird geladen...</p>"
+    return "<h1>Initial Setup</h1><p>Setup page is loading...</p>"
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -569,7 +569,7 @@ async def login(request: Request, login_data: LoginRequest):
         )
         return LoginResponse(
             success=False,
-            message="Ungültiger Benutzername oder Passwort"
+            message="Invalid username or password"
         )
     
     # Check if 2FA is enabled
@@ -645,7 +645,7 @@ async def login(request: Request, login_data: LoginRequest):
             )
             return LoginResponse(
                 success=False,
-                message="Ungültiger 2FA-Code" if not is_backup_code else "Ungültiger Backup-Code"
+                message="Invalid 2FA code" if not is_backup_code else "Invalid backup code"
             )
         
         # 2FA/Backup code successful - clear both counters
@@ -678,7 +678,7 @@ async def login(request: Request, login_data: LoginRequest):
     
     return LoginResponse(
         success=True,
-        message="Erfolgreich angemeldet"
+        message="Successfully logged in"
     )
 
 
@@ -696,7 +696,7 @@ async def logout(request: Request):
     )
     
     request.session.clear()
-    return {"success": True, "message": "Erfolgreich abgemeldet"}
+    return {"success": True, "message": "Successfully logged out"}
 
 
 @app.get("/api/v1/auth/status")
@@ -851,8 +851,8 @@ async def create_zone(request: CreateZoneRequest, http_request: Request = None, 
         raise
     except ValueError as e:
         if "token not configured" in str(e).lower():
-            raise HTTPException(status_code=400, detail="Neuer API-Token nicht konfiguriert.")
-        raise HTTPException(status_code=500, detail=f"Fehler beim Erstellen der Zone: {str(e)}")
+            raise HTTPException(status_code=400, detail="New API token not configured.")
+        raise HTTPException(status_code=500, detail=f"Error creating zone: {str(e)}")
     except Exception as e:
         username = http_request.session.get("username", "unknown") if hasattr(http_request, 'session') else "unknown"
         audit_log = get_audit_log()
@@ -864,7 +864,7 @@ async def create_zone(request: CreateZoneRequest, http_request: Request = None, 
             error=str(e),
             details={"zone_name": request.name if request.name else "unknown"}
         )
-        raise HTTPException(status_code=500, detail=f"Fehler beim Erstellen der Zone: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error creating zone: {str(e)}")
 
 
 @app.delete("/api/v1/zones/{zone_id}")
@@ -911,12 +911,12 @@ async def delete_zone(zone_id: str, request: Request, token_id: Optional[str] = 
             await client.close()
     except ValueError as e:
         if "token not configured" in str(e).lower():
-            raise HTTPException(status_code=400, detail="Neuer API-Token nicht konfiguriert.")
-        raise HTTPException(status_code=500, detail=f"Fehler beim Löschen der Zone: {str(e)}")
+            raise HTTPException(status_code=400, detail="New API token not configured.")
+        raise HTTPException(status_code=500, detail=f"Error deleting zone: {str(e)}")
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Fehler beim Löschen der Zone: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error deleting zone: {str(e)}")
 
 
 @app.get("/api/v1/public-ip")
@@ -933,7 +933,7 @@ async def get_public_ip():
         
         return {"ip": ip, "refresh_interval": interval, "manual": False}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Fehler beim Abrufen der öffentlichen IP: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving public IP: {str(e)}")
 
 
 class RefreshIntervalRequest(BaseModel):
@@ -949,9 +949,9 @@ async def set_public_ip_refresh_interval(request: RefreshIntervalRequest):
     """Set public IP refresh interval in seconds"""
     try:
         if request.interval < 10:
-            raise HTTPException(status_code=400, detail="Intervall muss mindestens 10 Sekunden sein")
+            raise HTTPException(status_code=400, detail="Interval must be at least 10 seconds")
         if request.interval > 3600:
-            raise HTTPException(status_code=400, detail="Intervall darf maximal 3600 Sekunden (1 Stunde) sein")
+            raise HTTPException(status_code=400, detail="Interval must not exceed 3600 seconds (1 hour)")
         
         storage = get_local_ip_storage()
         storage.set_public_ip_refresh_interval(request.interval)
@@ -960,7 +960,7 @@ async def set_public_ip_refresh_interval(request: RefreshIntervalRequest):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Fehler beim Setzen des Intervalls: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error setting interval: {str(e)}")
 
 
 @app.put("/api/v1/public-ip")
@@ -1011,7 +1011,7 @@ async def set_public_ip(request: SetPublicIPRequest, http_request: Request):
             success=False,
             error=str(e)
         )
-        raise HTTPException(status_code=500, detail=f"Fehler beim Setzen der IP: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error setting IP: {str(e)}")
 
 
 
@@ -1109,12 +1109,12 @@ async def list_zone_rrsets(zone_id: str, token_id: Optional[str] = None):
             await client.close()
     except ValueError as e:
         if "token not configured" in str(e).lower():
-            raise HTTPException(status_code=400, detail="Neuer API-Token nicht konfiguriert.")
-        raise HTTPException(status_code=500, detail=f"Fehler beim Laden der RRSets: {str(e)}")
+            raise HTTPException(status_code=400, detail="New API token not configured.")
+        raise HTTPException(status_code=500, detail=f"Error loading RRSets: {str(e)}")
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Fehler beim Laden der RRSets: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error loading RRSets: {str(e)}")
 
 
 class UpdateRRSetRequest(BaseModel):
@@ -1235,7 +1235,7 @@ async def check_ip_status(zone_id: str, rrset_id: str, request: CheckIPRequest, 
         
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Fehler beim Prüfen der IP: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error checking IP: {str(e)}")
 
 
 @app.put("/api/v1/zones/{zone_id}/rrsets/{rrset_id:path}/auto-update")
@@ -1273,7 +1273,7 @@ async def set_auto_update(zone_id: str, rrset_id: str, request: SetAutoUpdateReq
             error=str(e),
             details={"zone_id": zone_id, "rrset_id": rrset_id}
         )
-        raise HTTPException(status_code=500, detail=f"Fehler beim Setzen der Auto-Update-Einstellung: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error setting auto-update setting: {str(e)}")
 
 
 @app.put("/api/v1/zones/{zone_id}/rrsets/{rrset_id:path}/ttl")
@@ -1336,7 +1336,7 @@ async def set_ttl(zone_id: str, rrset_id: str, request: SetTTLRequest, http_requ
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Fehler beim Setzen der TTL: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error setting TTL: {str(e)}")
 
 
 @app.put("/api/v1/zones/{zone_id}/rrsets/{rrset_id:path}/comment")
@@ -1382,7 +1382,7 @@ async def set_comment(zone_id: str, rrset_id: str, request: SetCommentRequest, h
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Fehler beim Setzen des Kommentars: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error setting comment: {str(e)}")
 
 
 @app.put("/api/v1/zones/{zone_id}/rrsets/{rrset_id:path}/ip")
@@ -1480,7 +1480,7 @@ async def set_ip(zone_id: str, rrset_id: str, request: SetIPRequest, http_reques
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Fehler beim Setzen der IP: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error setting IP: {str(e)}")
 
 
 @app.post("/api/v1/zones/{zone_id}/rrsets")
@@ -1531,12 +1531,12 @@ async def create_rrset(zone_id: str, request: CreateRRSetRequest, http_request: 
             await client.close()
     except ValueError as e:
         if "token not configured" in str(e).lower():
-            raise HTTPException(status_code=400, detail="Neuer API-Token nicht konfiguriert.")
-        raise HTTPException(status_code=500, detail=f"Fehler beim Erstellen des RRSets: {str(e)}")
+            raise HTTPException(status_code=400, detail="New API token not configured.")
+        raise HTTPException(status_code=500, detail=f"Error creating RRSet: {str(e)}")
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Fehler beim Erstellen des RRSets: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error creating RRSet: {str(e)}")
 
 
 @app.put("/api/v1/zones/{zone_id}/rrsets/{rrset_id:path}")
@@ -1615,8 +1615,8 @@ async def update_rrset(zone_id: str, rrset_id: str, request: UpdateRRSetRequest,
             await client.close()
     except ValueError as e:
         if "token not configured" in str(e).lower():
-            raise HTTPException(status_code=400, detail="Neuer API-Token nicht konfiguriert.")
-        raise HTTPException(status_code=500, detail=f"Fehler beim Aktualisieren des RRSets: {str(e)}")
+            raise HTTPException(status_code=400, detail="New API token not configured.")
+        raise HTTPException(status_code=500, detail=f"Error updating RRSet: {str(e)}")
     except HTTPException:
         raise
     except Exception as e:
@@ -1630,7 +1630,7 @@ async def update_rrset(zone_id: str, rrset_id: str, request: UpdateRRSetRequest,
             error=str(e),
             details={"zone_id": zone_id, "rrset_id": rrset_id}
         )
-        raise HTTPException(status_code=500, detail=f"Fehler beim Aktualisieren des RRSets: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error updating RRSet: {str(e)}")
 
 
 @app.post("/api/v1/zones/{zone_id}/rrsets/{rrset_id:path}/assign-server-ip")
@@ -1747,7 +1747,7 @@ async def assign_server_ip(zone_id: str, rrset_id: str, request: Request, token_
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Fehler beim Zuweisen der Server-IP: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error assigning server IP: {str(e)}")
 
 
 @app.post("/api/v1/zones/{zone_id}/rrsets/{rrset_id:path}/local-ip")
@@ -1793,7 +1793,7 @@ async def delete_local_ip(zone_id: str, rrset_id: str, token_id: Optional[str] =
         
         return {"success": True, "zone_id": zone_id, "rrset_id": rrset_id}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Fehler beim Löschen der lokalen IP: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error deleting local IP: {str(e)}")
 
 
 @app.delete("/api/v1/zones/{zone_id}/rrsets/{rrset_id:path}")
@@ -1847,12 +1847,12 @@ async def delete_rrset(zone_id: str, rrset_id: str, request: Request, token_id: 
             await client.close()
     except ValueError as e:
         if "token not configured" in str(e).lower():
-            raise HTTPException(status_code=400, detail="Neuer API-Token nicht konfiguriert.")
-        raise HTTPException(status_code=500, detail=f"Fehler beim Löschen des RRSets: {str(e)}")
+            raise HTTPException(status_code=400, detail="New API token not configured.")
+        raise HTTPException(status_code=500, detail=f"Error deleting RRSet: {str(e)}")
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Fehler beim Löschen des RRSets: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error deleting RRSet: {str(e)}")
 
 
 @app.delete("/api/v1/zones/{zone_id}/rrsets/{rrset_id:path}/settings")
@@ -1878,7 +1878,7 @@ async def delete_rrset_settings(zone_id: str, rrset_id: str):
         
         return {"success": True, "zone_id": zone_id, "rrset_id": rrset_id}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Fehler beim Löschen der Einstellungen: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error deleting settings: {str(e)}")
 
 
 @app.get("/api/v1/auto-update/status")
@@ -1889,7 +1889,7 @@ async def get_auto_update_status():
         status = service.get_status()
         return status
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Fehler beim Abrufen des Auto-Update-Status: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving auto-update status: {str(e)}")
 
 
 @app.post("/api/v1/auto-update/check")
@@ -1900,7 +1900,7 @@ async def trigger_auto_update_check():
         results = await service.check_and_update_all()
         return results
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Fehler beim Ausführen der Auto-Update-Prüfung: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error executing auto-update check: {str(e)}")
 
 
 @app.get("/api/v1/auto-update/interval")
@@ -1911,7 +1911,7 @@ async def get_auto_update_interval():
         interval = storage.get_auto_update_interval()
         return {"interval": interval}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Fehler beim Abrufen des Auto-Update-Intervalls: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving auto-update interval: {str(e)}")
 
 
 @app.put("/api/v1/auto-update/interval")
@@ -1922,9 +1922,9 @@ async def set_auto_update_interval(request: RefreshIntervalRequest, http_request
     
     try:
         if request.interval < 60:
-            raise HTTPException(status_code=400, detail="Intervall muss mindestens 60 Sekunden sein")
+            raise HTTPException(status_code=400, detail="Interval must be at least 60 seconds")
         if request.interval > 3600:
-            raise HTTPException(status_code=400, detail="Intervall darf maximal 3600 Sekunden (1 Stunde) sein")
+            raise HTTPException(status_code=400, detail="Interval must not exceed 3600 seconds (1 hour)")
         
         storage = get_local_ip_storage()
         storage.set_auto_update_interval(request.interval)
@@ -1954,7 +1954,7 @@ async def set_auto_update_interval(request: RefreshIntervalRequest, http_request
             success=False,
             error=str(e)
         )
-        raise HTTPException(status_code=500, detail=f"Fehler beim Setzen des Auto-Update-Intervalls: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error setting auto-update interval: {str(e)}")
 
 
 # Security Configuration Endpoints
