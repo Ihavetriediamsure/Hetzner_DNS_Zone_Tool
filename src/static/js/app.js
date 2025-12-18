@@ -3745,8 +3745,8 @@ async function loadPeerSyncPublicKeys() {
                 const ownStatusDiv = document.getElementById('ownPeerStatus');
                 if (ownStatusDiv) {
                     const timestampHtml = ownStatus.timestamp ? 
-                        `<div style="margin-top: 5px;"><strong>Last Modified:</strong> ${ownStatus.timestamp}</div>` :
-                        '<div style="margin-top: 5px;"><strong>Last Modified:</strong> <span style="color: #666;">N/A</span></div>';
+                        `<div style="margin-top: 5px;"><strong>Config Last Modified:</strong> ${ownStatus.timestamp}</div>` :
+                        '<div style="margin-top: 5px;"><strong>Config Last Modified:</strong> <span style="color: #666;">N/A</span></div>';
                     ownStatusDiv.innerHTML = timestampHtml;
                 }
             }
