@@ -3395,6 +3395,69 @@ async def update_peer_sync_ntp_config(request: Request):
         raise HTTPException(status_code=500, detail=f"Error updating peer-sync NTP configuration: {str(e)}")
 
 
+@app.get("/api/v1/peer-sync/current-time")
+async def get_current_time(request: Request):
+    """Get current server time in configured timezone"""
+    if not request.session.get("authenticated", False):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        from datetime import datetime
+        try:
+            from zoneinfo import ZoneInfo
+        except ImportError:
+            # Fallback for Python < 3.9
+            try:
+                import pytz
+                ZoneInfo = pytz.timezone
+            except ImportError:
+                # No timezone support, use UTC
+                ZoneInfo = None
+        
+        # Get timezone from peer_sync_ntp.yaml
+        ntp_storage = get_peer_sync_ntp_storage()
+        ntp_config = ntp_storage.get_ntp_config()
+        timezone_str = ntp_config.get('timezone', 'UTC')
+        
+        # Get current time in configured timezone
+        try:
+            if ZoneInfo:
+                tz = ZoneInfo(timezone_str)
+                current_time = datetime.now(tz)
+            else:
+                # No timezone support, use UTC
+                current_time = datetime.utcnow()
+                timezone_str = 'UTC'
+            
+            time_str = current_time.strftime('%Y-%m-%d %H:%M:%S')
+            timezone_name = current_time.strftime('%Z') if hasattr(current_time, 'tzinfo') and current_time.tzinfo else timezone_str
+        except Exception as e:
+            logger.warning(f"Error parsing timezone {timezone_str}: {e}")
+            # Fallback to UTC
+            current_time = datetime.utcnow()
+            time_str = current_time.strftime('%Y-%m-%d %H:%M:%S')
+            timezone_name = 'UTC'
+            timezone_str = 'UTC'
+        
+        return {
+            "current_time": time_str,
+            "timezone": timezone_str,
+            "timezone_name": timezone_name,
+            "timestamp": current_time.timestamp()
+        }
+    except Exception as e:
+        logger.error(f"Error getting current time: {e}")
+        # Fallback to UTC
+        from datetime import datetime
+        current_time = datetime.utcnow()
+        return {
+            "current_time": current_time.strftime('%Y-%m-%d %H:%M:%S'),
+            "timezone": "UTC",
+            "timezone_name": "UTC",
+            "timestamp": current_time.timestamp()
+        }
+
+
 @app.get("/api/v1/peer-sync/own-config-status")
 async def get_own_config_status(request: Request):
     """Get own config status (Last Modified timestamp) - for authenticated users only"""

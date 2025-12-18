@@ -3576,6 +3576,14 @@ async function loadPeerSyncConfig() {
                 if (ntpServerInput) ntpServerInput.value = ntpConfig.ntp_server || 'pool.ntp.org';
                 const timezoneSelect = document.getElementById('peerSyncTimezone');
                 if (timezoneSelect) timezoneSelect.value = ntpConfig.timezone || 'UTC';
+                
+                // Start updating current time display (only once)
+                if (!window.serverTimeUpdateInterval) {
+                    updateCurrentServerTime();
+                    window.serverTimeUpdateInterval = setInterval(updateCurrentServerTime, 1000); // Update every second
+                } else {
+                    updateCurrentServerTime(); // Update immediately
+                }
             } else {
                 // Fallback to peer_sync config (for backward compatibility)
                 const ntpCheckbox = document.getElementById('peerSyncNtpEnabled');
@@ -3811,6 +3819,26 @@ async function regeneratePeerKey() {
     }
 }
 
+// Update current server time display
+async function updateCurrentServerTime() {
+    try {
+        const response = await fetch('/api/v1/peer-sync/current-time');
+        if (response.ok) {
+            const data = await response.json();
+            const timeDisplay = document.getElementById('currentTimeDisplay');
+            if (timeDisplay) {
+                timeDisplay.textContent = `${data.current_time} (${data.timezone_name || data.timezone})`;
+            }
+        }
+    } catch (error) {
+        console.error('Error updating current server time:', error);
+        const timeDisplay = document.getElementById('currentTimeDisplay');
+        if (timeDisplay) {
+            timeDisplay.textContent = 'Fehler beim Laden';
+        }
+    }
+}
+
 // Toggle Peer-Sync (removed - replaced by auto-sync checkbox)
 
 // Save Peer-Sync configuration
@@ -3862,6 +3890,9 @@ async function savePeerSyncConfig() {
         showToast('Peer-Sync configuration saved and synced', 'success');
         await loadPeerSyncConfig();
         await loadPeerSyncStatus();
+        
+        // Update current time display after saving
+        updateCurrentServerTime();
     } catch (error) {
         showToast('Error saving peer-sync config: ' + error.message, 'error');
     }
