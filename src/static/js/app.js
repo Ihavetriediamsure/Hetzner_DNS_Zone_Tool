@@ -3689,28 +3689,28 @@ async function loadPeerSyncConfig() {
             row.id = `peerNodeRow_${peerData.ip}`;
             
             // Initial status (will be updated when status data arrives)
-            const statusBadge = '<span style="background-color: #999; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.9em;">Loading...</span>';
-            const configLastModified = '<span style="color: #666; font-size: 0.9em;">Loading...</span>';
+            const statusBadge = '<span style="background-color: #999; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.9em; font-family: inherit;">Loading...</span>';
+            const configLastModified = '<span style="color: #666; font-size: 0.9em; font-family: inherit;">Loading...</span>';
             
             row.innerHTML = `
-                <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em;">
-                    <input type="text" id="peerAddress_${peerData.ip}" value="${peerAddress}" data-original="${peerAddress}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em;">
+                <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em; font-family: inherit;">
+                    <input type="text" id="peerAddress_${peerData.ip}" value="${peerAddress}" data-original="${peerAddress}" size="${Math.max(15, peerAddress.length + 2)}" style="padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em; font-family: inherit; box-sizing: border-box;">
                 </td>
-                <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em;">
-                    <input type="text" id="peerName_${peerData.ip}" value="${peerData.name}" data-original="${peerData.name}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em;">
+                <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em; font-family: inherit;">
+                    <input type="text" id="peerName_${peerData.ip}" value="${peerData.name}" data-original="${peerData.name}" size="${Math.max(12, (peerData.name || peerData.ip).length + 2)}" style="padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em; font-family: inherit; box-sizing: border-box;">
                 </td>
-                <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em;">
-                    <input type="text" id="peerPublicKey_${peerData.ip}" value="${peerData.public_key}" data-original="${peerData.public_key}" placeholder="32 bytes Base64" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 0.9em;">
+                <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em; font-family: monospace;">
+                    <input type="text" id="peerPublicKey_${peerData.ip}" value="${peerData.public_key}" data-original="${peerData.public_key}" placeholder="32 bytes Base64" size="${Math.max(44, (peerData.public_key || '').length + 2)}" style="padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em; font-family: monospace; box-sizing: border-box;">
                 </td>
-                <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em;" id="peerStatus_${peerData.ip}">
+                <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em; font-family: inherit;" id="peerStatus_${peerData.ip}">
                     ${statusBadge}
                 </td>
-                <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em;" id="peerConfigModified_${peerData.ip}">
+                <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em; font-family: inherit;" id="peerConfigModified_${peerData.ip}">
                     ${configLastModified}
                 </td>
-                <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em;">
-                    <button class="btn btn-primary" onclick="savePeerNode('${peerData.ip}')" style="padding: 4px 8px; font-size: 0.9em; margin-right: 5px;">Save</button>
-                    <button class="btn btn-secondary" onclick="removePeerNode('${peerData.ip}')" style="padding: 4px 8px; font-size: 0.9em;">Remove</button>
+                <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em; font-family: inherit;">
+                    <button class="btn btn-primary" onclick="savePeerNode('${peerData.ip}')" style="padding: 4px 8px; font-size: 0.9em; margin-right: 5px; font-family: inherit;">Save</button>
+                    <button class="btn btn-secondary" onclick="removePeerNode('${peerData.ip}')" style="padding: 4px 8px; font-size: 0.9em; font-family: inherit;">Remove</button>
                 </td>
             `;
             tbody.appendChild(row);
@@ -3731,8 +3731,8 @@ async function loadPeerSyncConfig() {
                     const statusCell = document.getElementById(`peerStatus_${peerData.ip}`);
                     if (statusCell) {
                         const statusBadge = status.latency !== null && status.latency >= 0 ?
-                            '<span style="background-color: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.9em;">Online</span>' :
-                            '<span style="background-color: #f44336; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.9em;">Offline</span>';
+                            '<span style="background-color: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.9em; font-family: inherit;">Online</span>' :
+                            '<span style="background-color: #f44336; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.9em; font-family: inherit;">Offline</span>';
                         statusCell.innerHTML = statusBadge;
                     }
                     
@@ -3740,7 +3740,7 @@ async function loadPeerSyncConfig() {
                     const configCell = document.getElementById(`peerConfigModified_${peerData.ip}`);
                     if (configCell) {
                         configCell.innerHTML = status.configStatus && status.configStatus.timestamp ? 
-                            '<span style="font-size: 0.9em;">' + status.configStatus.timestamp + '</span>' : '<span style="color: #666; font-size: 0.9em;">N/A</span>';
+                            '<span style="font-size: 0.9em; font-family: inherit;">' + status.configStatus.timestamp + '</span>' : '<span style="color: #666; font-size: 0.9em; font-family: inherit;">N/A</span>';
                     }
                     
                     // Latency column removed - no longer displayed
@@ -3939,24 +3939,24 @@ async function addPeerNode() {
     const row = document.createElement('tr');
     row.id = `peerNodeRow_${peerIp}`;
     row.innerHTML = `
-        <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em;">
-            <input type="text" id="peerAddress_${peerIp}" value="${peerAddress}" data-original="${peerAddress}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em;">
+        <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em; font-family: inherit;">
+            <input type="text" id="peerAddress_${peerIp}" value="${peerAddress}" data-original="${peerAddress}" size="${Math.max(15, peerAddress.length + 2)}" style="padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em; font-family: inherit; box-sizing: border-box;">
         </td>
-        <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em;">
-            <input type="text" id="peerName_${peerIp}" value="${peerIp}" data-original="${peerIp}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em;">
+        <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em; font-family: inherit;">
+            <input type="text" id="peerName_${peerIp}" value="${peerIp}" data-original="${peerIp}" size="${Math.max(12, peerIp.length + 2)}" style="padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em; font-family: inherit; box-sizing: border-box;">
         </td>
-        <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em;">
-            <input type="text" id="peerPublicKey_${peerIp}" value="" data-original="" placeholder="32 bytes Base64" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 0.9em;">
+        <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em; font-family: monospace;">
+            <input type="text" id="peerPublicKey_${peerIp}" value="" data-original="" placeholder="32 bytes Base64" size="46" style="padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em; font-family: monospace; box-sizing: border-box;">
         </td>
-        <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em;" id="peerStatus_${peerIp}">
-            <span style="background-color: #999; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.9em;">-</span>
+        <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em; font-family: inherit;" id="peerStatus_${peerIp}">
+            <span style="background-color: #999; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.9em; font-family: inherit;">-</span>
         </td>
-        <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em;" id="peerConfigModified_${peerIp}">
-            <span style="color: #666; font-size: 0.9em;">-</span>
+        <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em; font-family: inherit;" id="peerConfigModified_${peerIp}">
+            <span style="color: #666; font-size: 0.9em; font-family: inherit;">-</span>
         </td>
-        <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em;">
-            <button class="btn btn-primary" onclick="savePeerNode('${peerIp}')" style="padding: 4px 8px; font-size: 0.9em; margin-right: 5px;">Save</button>
-            <button class="btn btn-secondary" onclick="removePeerNode('${peerIp}')" style="padding: 4px 8px; font-size: 0.9em;">Remove</button>
+        <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em; font-family: inherit;">
+            <button class="btn btn-primary" onclick="savePeerNode('${peerIp}')" style="padding: 4px 8px; font-size: 0.9em; margin-right: 5px; font-family: inherit;">Save</button>
+            <button class="btn btn-secondary" onclick="removePeerNode('${peerIp}')" style="padding: 4px 8px; font-size: 0.9em; font-family: inherit;">Remove</button>
         </td>
     `;
     tbody.appendChild(row);

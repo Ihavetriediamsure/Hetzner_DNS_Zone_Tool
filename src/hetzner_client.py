@@ -31,8 +31,8 @@ class HetznerDNSClient:
                 return token_data.get('token'), base_url
         
         # Fallback to default method
-            token = self.config.get_api_token('new')
-            base_url = self.config.get_api_base_url('new')
+        token = self.config.get_api_token('new')
+        base_url = self.config.get_api_base_url('new')
         return token, base_url
     
     def _get_api(self) -> HetznerDNSAPI:
