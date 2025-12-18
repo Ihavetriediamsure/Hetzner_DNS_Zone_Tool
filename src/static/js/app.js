@@ -3561,14 +3561,40 @@ async function loadPeerSyncConfig() {
         const config = await response.json();
         
         // auto_sync_enabled removed - enabled=true means always auto-sync on every change
+        // max_retries and rate_limit removed - not needed when syncing on every change
         const timeoutInput = document.getElementById('peerSyncTimeout');
-        if (timeoutInput) timeoutInput.value = config.timeout;
-        const maxRetriesInput = document.getElementById('peerSyncMaxRetries');
-        if (maxRetriesInput) maxRetriesInput.value = config.max_retries;
-        const rateLimitInput = document.getElementById('peerSyncRateLimit');
-        if (rateLimitInput) rateLimitInput.value = config.rate_limit;
-        const ntpCheckbox = document.getElementById('peerSyncNtpEnabled');
-        if (ntpCheckbox) ntpCheckbox.checked = Boolean(config.ntp_enabled);
+        if (timeoutInput) timeoutInput.value = config.timeout || 3;
+        
+        // Load NTP config from peer_sync_ntp.yaml (separate synchronized file)
+        try {
+            const ntpResponse = await fetch('/api/v1/peer-sync/ntp-config');
+            if (ntpResponse.ok) {
+                const ntpConfig = await ntpResponse.json();
+                const ntpCheckbox = document.getElementById('peerSyncNtpEnabled');
+                if (ntpCheckbox) ntpCheckbox.checked = Boolean(ntpConfig.ntp_enabled);
+                const ntpServerInput = document.getElementById('peerSyncNtpServer');
+                if (ntpServerInput) ntpServerInput.value = ntpConfig.ntp_server || 'pool.ntp.org';
+                const timezoneSelect = document.getElementById('peerSyncTimezone');
+                if (timezoneSelect) timezoneSelect.value = ntpConfig.timezone || 'UTC';
+            } else {
+                // Fallback to peer_sync config (for backward compatibility)
+                const ntpCheckbox = document.getElementById('peerSyncNtpEnabled');
+                if (ntpCheckbox) ntpCheckbox.checked = Boolean(config.ntp_enabled);
+                const ntpServerInput = document.getElementById('peerSyncNtpServer');
+                if (ntpServerInput) ntpServerInput.value = config.ntp_server || 'pool.ntp.org';
+                const timezoneSelect = document.getElementById('peerSyncTimezone');
+                if (timezoneSelect) timezoneSelect.value = config.timezone || 'UTC';
+            }
+        } catch (error) {
+            console.error('Error loading NTP config:', error);
+            // Fallback to peer_sync config
+            const ntpCheckbox = document.getElementById('peerSyncNtpEnabled');
+            if (ntpCheckbox) ntpCheckbox.checked = Boolean(config.ntp_enabled);
+            const ntpServerInput = document.getElementById('peerSyncNtpServer');
+            if (ntpServerInput) ntpServerInput.value = config.ntp_server || 'pool.ntp.org';
+            const timezoneSelect = document.getElementById('peerSyncTimezone');
+            if (timezoneSelect) timezoneSelect.value = config.timezone || 'UTC';
+        }
         
         // Load peer nodes with keys (combined)
         const peerNodesList = document.getElementById('peerNodesList');
@@ -3796,14 +3822,17 @@ async function savePeerSyncConfig() {
         
         // auto_sync_enabled removed - enabled=true means always auto-sync on every change
         // Keep current enabled state (no separate auto-sync checkbox anymore)
+        // max_retries and rate_limit removed - not needed when syncing on every change
+        
+        // Save peer_sync config (without NTP settings)
         const config = {
             enabled: currentConfig.enabled,
             peer_nodes: currentConfig.peer_nodes || [],
             interval: currentConfig.interval || 300,  // Keep interval in config but don't show in UI
-            timeout: parseInt(document.getElementById('peerSyncTimeout').value),
-            max_retries: parseInt(document.getElementById('peerSyncMaxRetries').value),
-            rate_limit: parseFloat(document.getElementById('peerSyncRateLimit').value),
-            ntp_enabled: document.getElementById('peerSyncNtpEnabled').checked,
+            timeout: parseFloat(document.getElementById('peerSyncTimeout').value) || 3.0,
+            ntp_enabled: false,  // Deprecated - kept for backward compatibility
+            ntp_server: 'pool.ntp.org',  // Deprecated - kept for backward compatibility
+            timezone: 'UTC',  // Deprecated - kept for backward compatibility
             peer_public_keys: currentConfig.peer_public_keys || {}
         };
         
@@ -3815,7 +3844,25 @@ async function savePeerSyncConfig() {
         
         if (!response.ok) throw new Error('Failed to save peer-sync config');
         
-        showToast('Peer-Sync configuration saved', 'success');
+        // Save NTP config separately (in peer_sync_ntp.yaml - synchronized file)
+        const ntpConfig = {
+            ntp_enabled: document.getElementById('peerSyncNtpEnabled').checked,
+            ntp_server: document.getElementById('peerSyncNtpServer').value.trim() || 'pool.ntp.org',
+            timezone: document.getElementById('peerSyncTimezone').value || 'UTC'
+        };
+        
+        const ntpResponse = await fetch('/api/v1/peer-sync/ntp-config', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(ntpConfig)
+        });
+        
+        if (!ntpResponse.ok) {
+            const error = await ntpResponse.json();
+            throw new Error(error.detail || 'Failed to save NTP config');
+        }
+        
+        showToast('Peer-Sync configuration saved and synced', 'success');
         await loadPeerSyncConfig();
         await loadPeerSyncStatus();
     } catch (error) {

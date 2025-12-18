@@ -472,27 +472,50 @@
                         <strong>ℹ️ Info:</strong> When Peer-Sync is enabled, configuration changes are automatically synchronized to all peers on every change.
                     </p>
                 </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
-                    <div>
-                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Request Timeout (seconds):</label>
-                        <input type="number" id="peerSyncTimeout" min="1" max="30" value="5" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                    </div>
-                    <div>
-                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Max Retries:</label>
-                        <input type="number" id="peerSyncMaxRetries" min="0" max="10" value="3" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                    </div>
-                </div>
-                <div style="margin-bottom: 15px;">
-                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Rate Limit (req/sec):</label>
-                    <input type="number" id="peerSyncRateLimit" min="0.1" max="10" step="0.1" value="1" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; max-width: 300px;">
-                </div>
-                <div style="margin-bottom: 15px;">
-                    <label style="display: flex; align-items: center; gap: 10px;">
-                        <input type="checkbox" id="peerSyncNtpEnabled" onchange="savePeerSyncConfig()">
-                        <span>Enable NTP Synchronization</span>
-                    </label>
-                </div>
-                <button class="btn btn-primary" onclick="savePeerSyncConfig()">Save Settings</button>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold;">Request Timeout (seconds):</label>
+                <input type="number" id="peerSyncTimeout" min="1" max="30" step="0.1" value="3" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; max-width: 300px;">
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label style="display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="peerSyncNtpEnabled" onchange="savePeerSyncConfig()">
+                    <span>Enable NTP Synchronization</span>
+                </label>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold;">NTP Server:</label>
+                <input type="text" id="peerSyncNtpServer" placeholder="pool.ntp.org" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; max-width: 300px;">
+                <p style="margin: 5px 0 0 0; color: #666; font-size: 0.85em;">Alle Peers müssen denselben NTP Server verwenden</p>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold;">Timezone:</label>
+                <select id="peerSyncTimezone" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; max-width: 300px;">
+                    <option value="UTC">UTC</option>
+                    <option value="Europe/Berlin">Europe/Berlin (CET/CEST)</option>
+                    <option value="Europe/London">Europe/London (GMT/BST)</option>
+                    <option value="Europe/Paris">Europe/Paris (CET/CEST)</option>
+                    <option value="Europe/Madrid">Europe/Madrid (CET/CEST)</option>
+                    <option value="Europe/Rome">Europe/Rome (CET/CEST)</option>
+                    <option value="Europe/Amsterdam">Europe/Amsterdam (CET/CEST)</option>
+                    <option value="Europe/Vienna">Europe/Vienna (CET/CEST)</option>
+                    <option value="Europe/Zurich">Europe/Zurich (CET/CEST)</option>
+                    <option value="Europe/Stockholm">Europe/Stockholm (CET/CEST)</option>
+                    <option value="Europe/Warsaw">Europe/Warsaw (CET/CEST)</option>
+                    <option value="Europe/Prague">Europe/Prague (CET/CEST)</option>
+                    <option value="America/New_York">America/New_York (EST/EDT)</option>
+                    <option value="America/Chicago">America/Chicago (CST/CDT)</option>
+                    <option value="America/Denver">America/Denver (MST/MDT)</option>
+                    <option value="America/Los_Angeles">America/Los_Angeles (PST/PDT)</option>
+                    <option value="Asia/Tokyo">Asia/Tokyo (JST)</option>
+                    <option value="Asia/Shanghai">Asia/Shanghai (CST)</option>
+                    <option value="Asia/Hong_Kong">Asia/Hong_Kong (HKT)</option>
+                    <option value="Asia/Singapore">Asia/Singapore (SGT)</option>
+                    <option value="Australia/Sydney">Australia/Sydney (AEDT/AEST)</option>
+                    <option value="Australia/Melbourne">Australia/Melbourne (AEDT/AEST)</option>
+                </select>
+                <p style="margin: 5px 0 0 0; color: #666; font-size: 0.85em;">Alle Peers müssen dieselbe Zeitzone verwenden</p>
+            </div>
+            <button class="btn btn-primary" onclick="savePeerSyncConfig()">Save Settings</button>
             </div>
 
             <!-- Own Public Key Section -->

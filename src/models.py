@@ -224,10 +224,10 @@ class PeerSyncConfigResponse(BaseModel):
     enabled: bool  # If enabled, automatically sync on every change
     peer_nodes: List[str]
     interval: int  # Not used when enabled - kept for backward compatibility
-    timeout: int
-    max_retries: int
-    rate_limit: float
+    timeout: float  # Request timeout in seconds
     ntp_enabled: bool
+    ntp_server: str  # NTP server address (e.g., pool.ntp.org)
+    timezone: str  # Timezone (e.g., Europe/Berlin, UTC)
     peer_public_keys: Dict[str, Dict[str, str]]  # peer_ip -> {name, public_key} (public_key is X25519 Base64 PEM)
 
 class PeerSyncConfigRequest(BaseModel):
@@ -235,10 +235,10 @@ class PeerSyncConfigRequest(BaseModel):
     enabled: bool  # If enabled, automatically sync on every change
     peer_nodes: List[str]
     interval: int = Field(ge=60, le=3600, description="Sync interval in seconds (not used when enabled)")
-    timeout: int = Field(ge=1, le=30, description="Request timeout in seconds")
-    max_retries: int = Field(ge=0, le=10, description="Maximum retries")
-    rate_limit: float = Field(ge=0.1, le=10.0, description="Rate limit (requests per second per peer)")
+    timeout: float = Field(ge=1.0, le=30.0, description="Request timeout in seconds")
     ntp_enabled: bool
+    ntp_server: str = Field(default="pool.ntp.org", description="NTP server address")
+    timezone: str = Field(default="UTC", description="Timezone (e.g., Europe/Berlin, UTC)")
     peer_public_keys: Dict[str, Dict[str, str]]  # peer_ip -> {name, public_key} (public_key is X25519 WireGuard format: 32 bytes raw, Base64)
 
 class PeerSyncPublicKeysResponse(BaseModel):

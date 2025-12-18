@@ -82,10 +82,10 @@ class PeerSync:
         self._enabled = False  # If enabled, automatically sync on every change
         self._peer_nodes: List[str] = []
         self._sync_interval = 300  # Default: 5 minutes (not used when enabled - sync happens on every change)
-        self._timeout = 5  # Default: 5 seconds
-        self._max_retries = 3
-        self._rate_limit = 1.0  # Requests per second per peer
+        self._timeout = 3.0  # Default: 3 seconds (configurable)
         self._ntp_enabled = False
+        self._ntp_server = "pool.ntp.org"  # Default NTP server
+        self._timezone = "UTC"  # Default timezone
         
         # Own X25519 key pair
         self.x25519_private_key: Optional[x25519.X25519PrivateKey] = None
@@ -99,12 +99,9 @@ class PeerSync:
         self._stats: Dict[str, Any] = {
             "total_successful_syncs": 0,
             "total_failed_syncs": 0,
-            "peer_stats": {}  # peer_ip -> {success_count, fail_count, avg_duration_ms, avg_response_time_ms, total_retries, rate_limit_violations}
+            "peer_stats": {}  # peer_ip -> {success_count, fail_count, avg_duration_ms, avg_response_time_ms}
         }
         self._recent_events: List[Dict[str, Any]] = []  # Last 10 events
-        
-        # Rate limiting tracking
-        self._rate_limit_tracking: Dict[str, List[float]] = {}  # peer_ip -> [timestamps]
         
         # Background task
         self._task: Optional[asyncio.Task] = None
@@ -130,10 +127,11 @@ class PeerSync:
             # auto_sync_enabled removed - enabled=true means always auto-sync on every change
             self._peer_nodes = peer_sync_config.get('peer_nodes', [])
             self._sync_interval = peer_sync_config.get('interval', 300)
-            self._timeout = peer_sync_config.get('timeout', 5)
-            self._max_retries = peer_sync_config.get('max_retries', 3)
-            self._rate_limit = peer_sync_config.get('rate_limit', 1.0)
+            self._timeout = peer_sync_config.get('timeout', 3.0)  # Default: 3 seconds
+            # max_retries and rate_limit removed - not needed when syncing on every change
             self._ntp_enabled = peer_sync_config.get('ntp_enabled', False)
+            self._ntp_server = peer_sync_config.get('ntp_server', 'pool.ntp.org')
+            self._timezone = peer_sync_config.get('timezone', 'UTC')
         except Exception as e:
             logger.error(f"Failed to load peer-sync config: {e}")
     
@@ -361,37 +359,7 @@ class PeerSync:
         except Exception:
             return False
     
-    def _check_rate_limit(self, peer_ip: str) -> bool:
-        """Check if rate limit allows request to peer"""
-        now = time.time()
-        
-        # Clean old timestamps (older than 1 second)
-        if peer_ip in self._rate_limit_tracking:
-            self._rate_limit_tracking[peer_ip] = [
-                ts for ts in self._rate_limit_tracking[peer_ip] 
-                if now - ts < 1.0
-            ]
-        else:
-            self._rate_limit_tracking[peer_ip] = []
-        
-        # Check if we're at the limit
-        if len(self._rate_limit_tracking[peer_ip]) >= self._rate_limit:
-            # Update statistics
-            if peer_ip not in self._stats["peer_stats"]:
-                self._stats["peer_stats"][peer_ip] = {
-                    "success_count": 0,
-                    "fail_count": 0,
-                    "avg_duration_ms": 0,
-                    "avg_response_time_ms": 0,
-                    "total_retries": 0,
-                    "rate_limit_violations": 0
-                }
-            self._stats["peer_stats"][peer_ip]["rate_limit_violations"] += 1
-            return False
-        
-        # Add current timestamp
-        self._rate_limit_tracking[peer_ip].append(now)
-        return True
+    # Rate limiting removed - not needed when syncing on every change (event-based, not continuous)
     
     async def pull_config_from_peer(self, peer: str) -> Optional[Dict[str, Any]]:
         """Pull config from a specific peer (returns decrypted config or None on error)"""
@@ -584,10 +552,7 @@ class PeerSync:
             """Synchronize with a single peer (bidirectional) - called in parallel"""
             peer_ip = peer.split(":")[0]
             
-            # Check rate limit
-            if not self._check_rate_limit(peer_ip):
-                logger.debug(f"Rate limit exceeded for peer {peer}")
-                return None
+            # Rate limiting removed - not needed when syncing on every change (event-based)
             
             # Check if we have peer's X25519 public key
             if peer_ip not in self.peer_x25519_keys:
@@ -635,7 +600,49 @@ class PeerSync:
                 }
                 
                 post_url = f"http://{peer}{url_path}"
-                post_response = await client.post(post_url, headers=post_headers, content=body_data)
+                post_response = await client.post(post_url, headers=post_headers, content=body_data, timeout=self._timeout)
+                
+                # Also sync peer_sync_ntp.yaml
+                try:
+                    from src.peer_sync_ntp_storage import get_peer_sync_ntp_storage
+                    ntp_storage = get_peer_sync_ntp_storage()
+                    ntp_local_data = ntp_storage._load_storage()
+                    ntp_local_gen = ntp_local_data.get('generation', {})
+                    
+                    # Encrypt NTP config
+                    ntp_encrypted_result = self._encrypt_config(ntp_local_data, peer_x25519_pub)
+                    ntp_encrypted_data_b64 = ntp_encrypted_result["encrypted_data"]
+                    ntp_nonce_b64 = ntp_encrypted_result["nonce"]
+                    
+                    # Sign NTP encrypted data
+                    ntp_sig_data = f"{ntp_encrypted_data_b64}:{ntp_nonce_b64}".encode()
+                    ntp_signature = self._sign_data(ntp_sig_data)
+                    
+                    # Sign POST request for NTP
+                    ntp_url_path = "/api/v1/sync/peer-sync-ntp"
+                    ntp_body_data = json.dumps({
+                        "encrypted_data": ntp_encrypted_data_b64,
+                        "nonce": ntp_nonce_b64,
+                        "generation": ntp_local_gen
+                    }).encode()
+                    ntp_body_hash = hashlib.sha256(ntp_body_data).hexdigest()
+                    ntp_post_message = f"POST:{ntp_url_path}:{ntp_body_hash}".encode()
+                    ntp_post_signature = self._sign_data(ntp_post_message)
+                    
+                    ntp_post_headers = {
+                        "X-Peer-Public-Key": our_public_key_b64,
+                        "X-Peer-Signature": ntp_post_signature,
+                        "Content-Type": "application/json"
+                    }
+                    
+                    ntp_url = f"http://{peer}{ntp_url_path}"
+                    ntp_response = await client.post(ntp_url, headers=ntp_post_headers, content=ntp_body_data, timeout=self._timeout)
+                    # NTP sync is fire-and-forget (don't fail if it fails)
+                    if ntp_response.status_code == 200:
+                        logger.debug(f"NTP config synced to peer {peer_ip}")
+                except Exception as ntp_error:
+                    logger.debug(f"Failed to sync NTP config to peer {peer_ip}: {ntp_error}")
+                    # Don't fail the whole sync if NTP sync fails
                 
                 if post_response.status_code == 200:
                     post_result = post_response.json()

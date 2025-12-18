@@ -468,10 +468,12 @@ class ConfigManager:
                 'auto_sync_enabled': False,  # Deprecated - kept for backward compatibility, always same as enabled
                 'peer_nodes': [],
                 'interval': 300,
-                'timeout': 5,
-                'max_retries': 3,
-                'rate_limit': 1.0,
+                'timeout': 3.0,
+                'max_retries': 3,  # Deprecated - kept for backward compatibility
+                'rate_limit': 1.0,  # Deprecated - kept for backward compatibility
                 'ntp_enabled': False,
+                'ntp_server': 'pool.ntp.org',
+                'timezone': 'UTC',
                 'peer_public_keys': {}  # peer_ip -> {name, public_key} (public_key is X25519 Base64 PEM)
             }
         }
