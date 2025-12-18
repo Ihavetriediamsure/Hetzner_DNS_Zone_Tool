@@ -3695,7 +3695,7 @@ async function loadPeerSyncConfig() {
             
             row.innerHTML = `
                 <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em; font-family: inherit;">
-                    <input type="text" id="peerAddress_${peerData.ip}" value="${peerAddress}" data-original="${peerAddress}" size="${Math.max(15, peerAddress.length + 2)}" style="padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em; font-family: inherit; box-sizing: border-box;">
+                    <input type="text" id="peerAddress_${peerData.ip}" value="${peerAddress}" data-original="${peerAddress}" placeholder="e.g. 192.168.1.100:8412, https://peer.example.com:443" size="${Math.max(25, peerAddress.length + 2)}" style="padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em; font-family: inherit; box-sizing: border-box;">
                 </td>
                 <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em; font-family: inherit;">
                     <input type="text" id="peerName_${peerData.ip}" value="${peerData.name}" data-original="${peerData.name}" size="${Math.max(12, (peerData.name || peerData.ip).length + 2)}" style="padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em; font-family: inherit; box-sizing: border-box;">
