@@ -4079,12 +4079,13 @@ async function loadPeerSyncStatus() {
         const tbody = document.getElementById('peerStatusTableBody');
         tbody.innerHTML = '';
         
-        // First, add local host row
+        // First, add local host row (only once, with unique ID to prevent duplicates)
         try {
             const ownStatusResponse = await fetch('/api/v1/peer-sync/own-config-status');
             if (ownStatusResponse.ok) {
                 const ownStatus = await ownStatusResponse.json();
                 const localRow = document.createElement('tr');
+                localRow.id = 'localHostRow'; // Unique ID to prevent duplicates
                 localRow.style.backgroundColor = '#f0f8ff'; // Light blue background to distinguish local host
                 localRow.innerHTML = `
                     <td style="padding: 10px; border: 1px solid #ddd;"><strong>Local Host</strong> <span style="color: #2196F3; font-size: 0.85em;">(This Server)</span></td>
@@ -4095,7 +4096,10 @@ async function loadPeerSyncStatus() {
                     <td style="padding: 10px; border: 1px solid #ddd;">-</td>
                     <td style="padding: 10px; border: 1px solid #ddd;">-</td>
                 `;
-                tbody.appendChild(localRow);
+                // Only append if it doesn't already exist (shouldn't happen after innerHTML = '', but safety check)
+                if (!document.getElementById('localHostRow')) {
+                    tbody.appendChild(localRow);
+                }
             }
         } catch (e) {
             console.warn('Failed to load own config status:', e);
