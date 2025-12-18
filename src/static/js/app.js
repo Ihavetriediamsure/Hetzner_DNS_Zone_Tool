@@ -3689,28 +3689,28 @@ async function loadPeerSyncConfig() {
             row.id = `peerNodeRow_${peerData.ip}`;
             
             // Initial status (will be updated when status data arrives)
-            const statusBadge = '<span style="background-color: #999; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.85em;">Loading...</span>';
-            const configLastModified = '<span style="color: #666;">Loading...</span>';
+            const statusBadge = '<span style="background-color: #999; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.9em;">Loading...</span>';
+            const configLastModified = '<span style="color: #666; font-size: 0.9em;">Loading...</span>';
             
             row.innerHTML = `
-                <td style="padding: 10px; border: 1px solid #ddd;">
+                <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em;">
                     <input type="text" id="peerAddress_${peerData.ip}" value="${peerAddress}" data-original="${peerAddress}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em;">
                 </td>
-                <td style="padding: 10px; border: 1px solid #ddd;">
+                <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em;">
                     <input type="text" id="peerName_${peerData.ip}" value="${peerData.name}" data-original="${peerData.name}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em;">
                 </td>
-                <td style="padding: 10px; border: 1px solid #ddd;">
-                    <input type="text" id="peerPublicKey_${peerData.ip}" value="${peerData.public_key}" data-original="${peerData.public_key}" placeholder="32 bytes Base64" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 0.8em;">
+                <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em;">
+                    <input type="text" id="peerPublicKey_${peerData.ip}" value="${peerData.public_key}" data-original="${peerData.public_key}" placeholder="32 bytes Base64" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 0.9em;">
                 </td>
-                <td style="padding: 10px; border: 1px solid #ddd;" id="peerStatus_${peerData.ip}">
+                <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em;" id="peerStatus_${peerData.ip}">
                     ${statusBadge}
                 </td>
-                <td style="padding: 10px; border: 1px solid #ddd;" id="peerConfigModified_${peerData.ip}">
+                <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em;" id="peerConfigModified_${peerData.ip}">
                     ${configLastModified}
                 </td>
-                <td style="padding: 10px; border: 1px solid #ddd;">
-                    <button class="btn btn-primary" onclick="savePeerNode('${peerData.ip}')" style="padding: 4px 8px; font-size: 0.85em; margin-right: 5px;">Save</button>
-                    <button class="btn btn-secondary" onclick="removePeerNode('${peerData.ip}')" style="padding: 4px 8px; font-size: 0.85em;">Remove</button>
+                <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em;">
+                    <button class="btn btn-primary" onclick="savePeerNode('${peerData.ip}')" style="padding: 4px 8px; font-size: 0.9em; margin-right: 5px;">Save</button>
+                    <button class="btn btn-secondary" onclick="removePeerNode('${peerData.ip}')" style="padding: 4px 8px; font-size: 0.9em;">Remove</button>
                 </td>
             `;
             tbody.appendChild(row);
@@ -3731,8 +3731,8 @@ async function loadPeerSyncConfig() {
                     const statusCell = document.getElementById(`peerStatus_${peerData.ip}`);
                     if (statusCell) {
                         const statusBadge = status.latency !== null && status.latency >= 0 ?
-                            '<span style="background-color: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.85em;">Online</span>' :
-                            '<span style="background-color: #f44336; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.85em;">Offline</span>';
+                            '<span style="background-color: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.9em;">Online</span>' :
+                            '<span style="background-color: #f44336; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.9em;">Offline</span>';
                         statusCell.innerHTML = statusBadge;
                     }
                     
@@ -3740,7 +3740,7 @@ async function loadPeerSyncConfig() {
                     const configCell = document.getElementById(`peerConfigModified_${peerData.ip}`);
                     if (configCell) {
                         configCell.innerHTML = status.configStatus && status.configStatus.timestamp ? 
-                            status.configStatus.timestamp : '<span style="color: #666;">N/A</span>';
+                            '<span style="font-size: 0.9em;">' + status.configStatus.timestamp + '</span>' : '<span style="color: #666; font-size: 0.9em;">N/A</span>';
                     }
                     
                     // Latency column removed - no longer displayed
@@ -3939,24 +3939,24 @@ async function addPeerNode() {
     const row = document.createElement('tr');
     row.id = `peerNodeRow_${peerIp}`;
     row.innerHTML = `
-        <td style="padding: 10px; border: 1px solid #ddd;">
+        <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em;">
             <input type="text" id="peerAddress_${peerIp}" value="${peerAddress}" data-original="${peerAddress}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em;">
         </td>
-        <td style="padding: 10px; border: 1px solid #ddd;">
+        <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em;">
             <input type="text" id="peerName_${peerIp}" value="${peerIp}" data-original="${peerIp}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em;">
         </td>
-        <td style="padding: 10px; border: 1px solid #ddd;">
-            <input type="text" id="peerPublicKey_${peerIp}" value="" data-original="" placeholder="32 bytes Base64" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 0.8em;">
+        <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em;">
+            <input type="text" id="peerPublicKey_${peerIp}" value="" data-original="" placeholder="32 bytes Base64" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 0.9em;">
         </td>
-        <td style="padding: 10px; border: 1px solid #ddd;" id="peerStatus_${peerIp}">
-            <span style="background-color: #999; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.85em;">-</span>
+        <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em;" id="peerStatus_${peerIp}">
+            <span style="background-color: #999; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.9em;">-</span>
         </td>
-        <td style="padding: 10px; border: 1px solid #ddd;" id="peerConfigModified_${peerIp}">
-            <span style="color: #666;">-</span>
+        <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em;" id="peerConfigModified_${peerIp}">
+            <span style="color: #666; font-size: 0.9em;">-</span>
         </td>
-        <td style="padding: 10px; border: 1px solid #ddd;">
-            <button class="btn btn-primary" onclick="savePeerNode('${peerIp}')" style="padding: 4px 8px; font-size: 0.85em; margin-right: 5px;">Save</button>
-            <button class="btn btn-secondary" onclick="removePeerNode('${peerIp}')" style="padding: 4px 8px; font-size: 0.85em;">Remove</button>
+        <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em;">
+            <button class="btn btn-primary" onclick="savePeerNode('${peerIp}')" style="padding: 4px 8px; font-size: 0.9em; margin-right: 5px;">Save</button>
+            <button class="btn btn-secondary" onclick="removePeerNode('${peerIp}')" style="padding: 4px 8px; font-size: 0.9em;">Remove</button>
         </td>
     `;
     tbody.appendChild(row);
@@ -4079,19 +4079,45 @@ async function savePeerNode(peerIp) {
         showToast('Peer node saved successfully', 'success');
         await loadPeerSyncConfig();
         
-        // Automatically pull newest config from peers (no dialog)
-        try {
-            await pullNewestConfigFromPeers();
-        } catch (error) {
-            // Silent fail - if no peers available or error, just continue
-            console.debug('Auto-pull newest config failed (expected if no peers available):', error);
-        }
+        // Note: Auto-pull removed - it was causing unwanted side effects (e.g., triggering security config reload)
+        // Users can manually pull newest config if needed
     } catch (error) {
         showToast('Error saving peer node: ' + error.message, 'error');
     }
 }
 
-// Pull newest config from all reachable peers
+// Pull newest config from all reachable peers (with confirmation dialog)
+async function pullNewestConfigWithConfirmation() {
+    // Confirmation dialog warning about config overwrite
+    if (!confirm('⚠️ WARNING: This will overwrite your local IP configuration!\n\n' +
+                 'The newest configuration from the peer-to-peer network will be pulled and applied.\n\n' +
+                 'Do you want to continue?')) {
+        return;
+    }
+    
+    try {
+        showToast('Searching for newest config in peer-to-peer network...', 'info');
+        
+        const response = await fetch('/api/v1/peer-sync/find-newest-config');
+        if (!response.ok) {
+            throw new Error('Failed to find newest config');
+        }
+        
+        const result = await response.json();
+        
+        if (!result.found) {
+            showToast('No peers available or no newer config found', 'warning');
+            return;
+        }
+        
+        // Pull from newest peer (with confirmation already shown)
+        await pullConfigFromPeer(result.peer, result.peer_name, false);
+    } catch (error) {
+        showToast('Error finding newest config: ' + error.message, 'error');
+    }
+}
+
+// Pull newest config from all reachable peers (internal, no confirmation)
 async function pullNewestConfigFromPeers() {
     try {
         showToast('Suche nach neuester Config...', 'info');

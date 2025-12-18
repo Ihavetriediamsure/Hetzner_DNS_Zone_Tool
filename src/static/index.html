@@ -462,7 +462,12 @@
 
         <!-- Peer Sync Tab -->
         <div id="peer-syncTab" class="tab-content">
-            <h2>Peer Sync Configuration</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin: 0;">Peer Sync Configuration</h2>
+                <button class="btn btn-primary" onclick="pullNewestConfigWithConfirmation()" style="font-size: 0.95em; padding: 10px 20px;">
+                    🔄 Pull Newest Config
+                </button>
+            </div>
             
             <!-- Sync Settings -->
             <div class="config-section" style="border: 1px solid #ddd; padding: 20px; margin-top: 20px; border-radius: 4px;">
@@ -595,11 +600,11 @@
                         <button class="btn btn-secondary" onclick="copyToClipboard('peerPublicKey')">Copy</button>
                     </div>
                 </div>
-                <div style="margin-top: 15px; padding: 15px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
-                    <p style="margin: 0; color: #856404; font-size: 0.9em;">
+                <div style="margin-top: 15px; padding: 15px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 15px;">
+                    <p style="margin: 0; color: #856404; font-size: 0.9em; flex: 1;">
                         <strong>⚠️ Important:</strong> If you regenerate the private key, you must update the new public key on all other peers!
                     </p>
-                    <button class="btn btn-warning" onclick="regeneratePeerKey()" style="margin-top: 10px;">Generate New Private Key</button>
+                    <button class="btn btn-warning" onclick="regeneratePeerKey()" style="white-space: nowrap; flex-shrink: 0;">Generate New Private Key</button>
                 </div>
             </div>
 
@@ -618,15 +623,15 @@
                 
                 <!-- Peer Nodes Table -->
                 <div style="margin-bottom: 15px; overflow-x: auto;">
-                    <table id="peerNodesTable" style="width: auto; min-width: 100%; border-collapse: collapse; table-layout: auto;">
+                    <table id="peerNodesTable" style="width: auto; border-collapse: collapse; table-layout: auto; font-size: 0.9em;">
                         <thead>
                             <tr style="background-color: #f5f5f5;">
-                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd; white-space: nowrap;">Peer Address (IP:Port)</th>
-                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd; white-space: nowrap;">Peer Name</th>
-                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd; min-width: 200px;">Public Key</th>
-                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd; white-space: nowrap;">Status</th>
-                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd; white-space: nowrap;">Config Last Modified</th>
-                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd; white-space: nowrap;">Actions</th>
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd; white-space: nowrap; font-size: 0.9em;">Peer Address (IP:Port)</th>
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd; white-space: nowrap; font-size: 0.9em;">Peer Name</th>
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd; font-size: 0.9em;">Public Key</th>
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd; white-space: nowrap; font-size: 0.9em;">Status</th>
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd; white-space: nowrap; font-size: 0.9em;">Config Last Modified</th>
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd; white-space: nowrap; font-size: 0.9em;">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="peerNodesTableBody">
