@@ -658,13 +658,7 @@ input[type="password"]:focus {
     white-space: nowrap;
 }
 
-.rrsets-table .local-ip-cell {
-    /* Auto-adjust to content */
-}
-
-.local-ip-cell {
-    /* Auto-adjust to content */
-}
+/* .rrsets-table .local-ip-cell and .local-ip-cell removed - columns now auto-adjust to content */
 
 .local-ip-input {
     width: 100%;
