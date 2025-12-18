@@ -2654,9 +2654,7 @@ async def update_peer_sync_config(request: Request, config_data: PeerSyncConfigR
         config['peer_sync']['interval'] = config_data.interval
         config['peer_sync']['timeout'] = config_data.timeout
         # max_retries and rate_limit removed - not needed when syncing on every change
-        config['peer_sync']['ntp_enabled'] = config_data.ntp_enabled
-        config['peer_sync']['ntp_server'] = config_data.ntp_server
-        config['peer_sync']['timezone'] = config_data.timezone
+        # ntp_enabled, ntp_server, timezone removed - now stored in peer_sync_ntp.yaml (synchronized file)
         config['peer_sync']['peer_public_keys'] = config_data.peer_public_keys
         
         config_manager._config = config
@@ -2694,9 +2692,8 @@ async def update_peer_sync_config(request: Request, config_data: PeerSyncConfigR
                 details={
                     "interval": config_data.interval,
                     "timeout": config_data.timeout,
-                    "max_retries": config_data.max_retries,
-                    "rate_limit": config_data.rate_limit,
-                    "ntp_enabled": config_data.ntp_enabled
+                    # max_retries and rate_limit removed - not needed when syncing on every change
+                    # ntp_enabled removed - now stored in peer_sync_ntp.yaml
                 }
             )
         

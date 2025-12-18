@@ -236,9 +236,8 @@ class PeerSyncConfigRequest(BaseModel):
     peer_nodes: List[str]
     interval: int = Field(ge=60, le=3600, description="Sync interval in seconds (not used when enabled)")
     timeout: float = Field(ge=1.0, le=30.0, description="Request timeout in seconds")
-    ntp_enabled: bool
-    ntp_server: str = Field(default="pool.ntp.org", description="NTP server address")
-    timezone: str = Field(default="UTC", description="Timezone (e.g., Europe/Berlin, UTC)")
+    # ntp_enabled, ntp_server, timezone removed - now stored in peer_sync_ntp.yaml (synchronized file)
+    # max_retries and rate_limit removed - not needed when syncing on every change
     peer_public_keys: Dict[str, Dict[str, str]]  # peer_ip -> {name, public_key} (public_key is X25519 WireGuard format: 32 bytes raw, Base64)
 
 class PeerSyncPublicKeysResponse(BaseModel):

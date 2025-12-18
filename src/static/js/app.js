@@ -3824,15 +3824,12 @@ async function savePeerSyncConfig() {
         // Keep current enabled state (no separate auto-sync checkbox anymore)
         // max_retries and rate_limit removed - not needed when syncing on every change
         
-        // Save peer_sync config (without NTP settings)
+        // Save peer_sync config (without NTP settings - they are in peer_sync_ntp.yaml)
         const config = {
             enabled: currentConfig.enabled,
             peer_nodes: currentConfig.peer_nodes || [],
             interval: currentConfig.interval || 300,  // Keep interval in config but don't show in UI
             timeout: parseFloat(document.getElementById('peerSyncTimeout').value) || 3.0,
-            ntp_enabled: false,  // Deprecated - kept for backward compatibility
-            ntp_server: 'pool.ntp.org',  // Deprecated - kept for backward compatibility
-            timezone: 'UTC',  // Deprecated - kept for backward compatibility
             peer_public_keys: currentConfig.peer_public_keys || {}
         };
         

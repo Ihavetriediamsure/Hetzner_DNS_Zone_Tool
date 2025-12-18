@@ -490,28 +490,89 @@
             <div style="margin-bottom: 15px;">
                 <label style="display: block; margin-bottom: 5px; font-weight: bold;">Timezone:</label>
                 <select id="peerSyncTimezone" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; max-width: 300px;">
-                    <option value="UTC">UTC</option>
-                    <option value="Europe/Berlin">Europe/Berlin (CET/CEST)</option>
-                    <option value="Europe/London">Europe/London (GMT/BST)</option>
-                    <option value="Europe/Paris">Europe/Paris (CET/CEST)</option>
-                    <option value="Europe/Madrid">Europe/Madrid (CET/CEST)</option>
-                    <option value="Europe/Rome">Europe/Rome (CET/CEST)</option>
-                    <option value="Europe/Amsterdam">Europe/Amsterdam (CET/CEST)</option>
-                    <option value="Europe/Vienna">Europe/Vienna (CET/CEST)</option>
-                    <option value="Europe/Zurich">Europe/Zurich (CET/CEST)</option>
-                    <option value="Europe/Stockholm">Europe/Stockholm (CET/CEST)</option>
-                    <option value="Europe/Warsaw">Europe/Warsaw (CET/CEST)</option>
-                    <option value="Europe/Prague">Europe/Prague (CET/CEST)</option>
-                    <option value="America/New_York">America/New_York (EST/EDT)</option>
-                    <option value="America/Chicago">America/Chicago (CST/CDT)</option>
-                    <option value="America/Denver">America/Denver (MST/MDT)</option>
-                    <option value="America/Los_Angeles">America/Los_Angeles (PST/PDT)</option>
-                    <option value="Asia/Tokyo">Asia/Tokyo (JST)</option>
-                    <option value="Asia/Shanghai">Asia/Shanghai (CST)</option>
-                    <option value="Asia/Hong_Kong">Asia/Hong_Kong (HKT)</option>
-                    <option value="Asia/Singapore">Asia/Singapore (SGT)</option>
-                    <option value="Australia/Sydney">Australia/Sydney (AEDT/AEST)</option>
-                    <option value="Australia/Melbourne">Australia/Melbourne (AEDT/AEST)</option>
+                    <optgroup label="UTC">
+                        <option value="UTC">UTC (Coordinated Universal Time)</option>
+                    </optgroup>
+                    <optgroup label="Europa">
+                        <option value="Europe/Berlin">Europe/Berlin (CET/CEST)</option>
+                        <option value="Europe/London">Europe/London (GMT/BST)</option>
+                        <option value="Europe/Paris">Europe/Paris (CET/CEST)</option>
+                        <option value="Europe/Madrid">Europe/Madrid (CET/CEST)</option>
+                        <option value="Europe/Rome">Europe/Rome (CET/CEST)</option>
+                        <option value="Europe/Amsterdam">Europe/Amsterdam (CET/CEST)</option>
+                        <option value="Europe/Vienna">Europe/Vienna (CET/CEST)</option>
+                        <option value="Europe/Zurich">Europe/Zurich (CET/CEST)</option>
+                        <option value="Europe/Stockholm">Europe/Stockholm (CET/CEST)</option>
+                        <option value="Europe/Warsaw">Europe/Warsaw (CET/CEST)</option>
+                        <option value="Europe/Prague">Europe/Prague (CET/CEST)</option>
+                        <option value="Europe/Brussels">Europe/Brussels (CET/CEST)</option>
+                        <option value="Europe/Copenhagen">Europe/Copenhagen (CET/CEST)</option>
+                        <option value="Europe/Helsinki">Europe/Helsinki (EET/EEST)</option>
+                        <option value="Europe/Oslo">Europe/Oslo (CET/CEST)</option>
+                        <option value="Europe/Dublin">Europe/Dublin (GMT/IST)</option>
+                        <option value="Europe/Lisbon">Europe/Lisbon (WET/WEST)</option>
+                        <option value="Europe/Athens">Europe/Athens (EET/EEST)</option>
+                        <option value="Europe/Bucharest">Europe/Bucharest (EET/EEST)</option>
+                        <option value="Europe/Budapest">Europe/Budapest (CET/CEST)</option>
+                        <option value="Europe/Moscow">Europe/Moscow (MSK)</option>
+                        <option value="Europe/Kiev">Europe/Kiev (EET/EEST)</option>
+                        <option value="Europe/Istanbul">Europe/Istanbul (TRT)</option>
+                    </optgroup>
+                    <optgroup label="Nordamerika">
+                        <option value="America/New_York">America/New_York (EST/EDT)</option>
+                        <option value="America/Chicago">America/Chicago (CST/CDT)</option>
+                        <option value="America/Denver">America/Denver (MST/MDT)</option>
+                        <option value="America/Los_Angeles">America/Los_Angeles (PST/PDT)</option>
+                        <option value="America/Toronto">America/Toronto (EST/EDT)</option>
+                        <option value="America/Vancouver">America/Vancouver (PST/PDT)</option>
+                        <option value="America/Mexico_City">America/Mexico_City (CST/CDT)</option>
+                        <option value="America/Chicago">America/Chicago (CST/CDT)</option>
+                        <option value="America/Phoenix">America/Phoenix (MST)</option>
+                        <option value="America/Anchorage">America/Anchorage (AKST/AKDT)</option>
+                        <option value="America/Honolulu">America/Honolulu (HST)</option>
+                    </optgroup>
+                    <optgroup label="Südamerika">
+                        <option value="America/Sao_Paulo">America/Sao_Paulo (BRT/BRST)</option>
+                        <option value="America/Buenos_Aires">America/Buenos_Aires (ART)</option>
+                        <option value="America/Lima">America/Lima (PET)</option>
+                        <option value="America/Santiago">America/Santiago (CLT/CLST)</option>
+                    </optgroup>
+                    <optgroup label="Asien">
+                        <option value="Asia/Tokyo">Asia/Tokyo (JST)</option>
+                        <option value="Asia/Shanghai">Asia/Shanghai (CST)</option>
+                        <option value="Asia/Hong_Kong">Asia/Hong_Kong (HKT)</option>
+                        <option value="Asia/Singapore">Asia/Singapore (SGT)</option>
+                        <option value="Asia/Seoul">Asia/Seoul (KST)</option>
+                        <option value="Asia/Taipei">Asia/Taipei (CST)</option>
+                        <option value="Asia/Bangkok">Asia/Bangkok (ICT)</option>
+                        <option value="Asia/Jakarta">Asia/Jakarta (WIB)</option>
+                        <option value="Asia/Manila">Asia/Manila (PHT)</option>
+                        <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
+                        <option value="Asia/Dubai">Asia/Dubai (GST)</option>
+                        <option value="Asia/Riyadh">Asia/Riyadh (AST)</option>
+                        <option value="Asia/Jerusalem">Asia/Jerusalem (IST/IDT)</option>
+                        <option value="Asia/Doha">Asia/Doha (AST)</option>
+                        <option value="Asia/Kuwait">Asia/Kuwait (AST)</option>
+                        <option value="Asia/Mumbai">Asia/Mumbai (IST)</option>
+                        <option value="Asia/Dhaka">Asia/Dhaka (BST)</option>
+                    </optgroup>
+                    <optgroup label="Ozeanien">
+                        <option value="Australia/Sydney">Australia/Sydney (AEDT/AEST)</option>
+                        <option value="Australia/Melbourne">Australia/Melbourne (AEDT/AEST)</option>
+                        <option value="Australia/Brisbane">Australia/Brisbane (AEST)</option>
+                        <option value="Australia/Perth">Australia/Perth (AWST)</option>
+                        <option value="Australia/Adelaide">Australia/Adelaide (ACDT/ACST)</option>
+                        <option value="Australia/Darwin">Australia/Darwin (ACST)</option>
+                        <option value="Pacific/Auckland">Pacific/Auckland (NZDT/NZST)</option>
+                        <option value="Pacific/Honolulu">Pacific/Honolulu (HST)</option>
+                    </optgroup>
+                    <optgroup label="Afrika">
+                        <option value="Africa/Cairo">Africa/Cairo (EET)</option>
+                        <option value="Africa/Johannesburg">Africa/Johannesburg (SAST)</option>
+                        <option value="Africa/Lagos">Africa/Lagos (WAT)</option>
+                        <option value="Africa/Casablanca">Africa/Casablanca (WET/WEST)</option>
+                        <option value="Africa/Nairobi">Africa/Nairobi (EAT)</option>
+                    </optgroup>
                 </select>
                 <p style="margin: 5px 0 0 0; color: #666; font-size: 0.85em;">Alle Peers müssen dieselbe Zeitzone verwenden</p>
             </div>
