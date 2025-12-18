@@ -3993,8 +3993,47 @@ async function savePeerNode(peerIp) {
         
         showToast('Peer node saved successfully', 'success');
         await loadPeerSyncConfig();
+        
+        // Ask if user wants to pull newest config from peers
+        const shouldPull = confirm('Neuer Peer hinzugefügt. Soll die neueste Config von den verfügbaren Peers gepullt werden?');
+        if (shouldPull) {
+            await pullNewestConfigFromPeers();
+        }
     } catch (error) {
         showToast('Error saving peer node: ' + error.message, 'error');
+    }
+}
+
+// Pull newest config from all reachable peers
+async function pullNewestConfigFromPeers() {
+    try {
+        showToast('Suche nach neuester Config...', 'info');
+        
+        const response = await fetch('/api/v1/peer-sync/find-newest-config');
+        if (!response.ok) {
+            throw new Error('Failed to find newest config');
+        }
+        
+        const result = await response.json();
+        
+        if (!result.found) {
+            showToast(result.message || 'Keine erreichbaren Peers gefunden', 'warning');
+            return;
+        }
+        
+        // Confirm pull from newest peer
+        const shouldPull = confirm(
+            `Neueste Config gefunden bei:\n` +
+            `Peer: ${result.peer_name} (${result.peer_ip})\n` +
+            `Last Modified: ${result.timestamp}\n\n` +
+            `Config von diesem Peer pullen?`
+        );
+        
+        if (shouldPull) {
+            await pullConfigFromPeer(result.peer, result.peer_name);
+        }
+    } catch (error) {
+        showToast('Error finding newest config: ' + error.message, 'error');
     }
 }
 
@@ -4123,6 +4162,14 @@ async function loadPeerSyncStatus() {
                 '<span style="background-color: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px;">Success</span>' :
                 '<span style="background-color: #f44336; color: white; padding: 4px 8px; border-radius: 4px;">Error</span>';
             
+            // Build peer address (IP:Port format)
+            const peerAddress = peer.peer_ip.includes(':') ? peer.peer_ip : `${peer.peer_ip}:8412`;
+            
+            // Pull Config button (only show if we have lastModified timestamp)
+            const pullButtonHtml = lastModified !== '-' ? 
+                `<button class="btn btn-primary" onclick="pullConfigFromPeer('${peerAddress}', '${peer.peer_name}')" style="margin-left: 5px;">Pull Config</button>` :
+                '';
+            
             row.innerHTML = `
                 <td style="padding: 10px; border: 1px solid #ddd;">${peer.peer_name}</td>
                 <td style="padding: 10px; border: 1px solid #ddd;">${peer.peer_ip}</td>
@@ -4132,6 +4179,7 @@ async function loadPeerSyncStatus() {
                 <td style="padding: 10px; border: 1px solid #ddd;">${peer.success_rate}%</td>
                 <td style="padding: 10px; border: 1px solid #ddd;">
                     <button class="btn btn-secondary" onclick="testPeerConnection('${peer.peer_ip}')">Test</button>
+                    ${pullButtonHtml}
                 </td>
             `;
             return row;
@@ -4350,6 +4398,37 @@ async function testPeerConnection(peer) {
         await loadPeerSyncStatus();
     } catch (error) {
         showToast('Error testing connection: ' + error.message, 'error');
+    }
+}
+
+// Pull config from peer
+async function pullConfigFromPeer(peerAddress, peerName) {
+    // Confirmation dialog
+    if (!confirm(`Config von ${peerName} (${peerAddress}) pullen?\n\nDie lokale Config wird überschrieben!`)) {
+        return;
+    }
+    
+    try {
+        showToast('Pulling config from peer...', 'info');
+        
+        const response = await fetch(`/api/v1/peer-sync/pull-config?peer=${encodeURIComponent(peerAddress)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to pull config');
+        }
+        
+        const result = await response.json();
+        showToast(result.message || 'Config successfully pulled from peer', 'success');
+        
+        // Reload peer sync status and config
+        await loadPeerSyncStatus();
+        await loadPeerSyncConfig();
+    } catch (error) {
+        showToast('Error pulling config: ' + error.message, 'error');
     }
 }
 

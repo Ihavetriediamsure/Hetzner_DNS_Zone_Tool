@@ -58,6 +58,7 @@ class AuditAction(str, Enum):
     PEER_SYNC_FAILURE = "peer_sync_failure"
     PEER_SYNC_MANUAL_TRIGGER = "peer_sync_manual_trigger"
     PEER_SYNC_CONNECTION_TEST = "peer_sync_connection_test"
+    PEER_SYNC_PULL_CONFIG = "peer_sync_pull_config"
 
 
 class AuditLog:

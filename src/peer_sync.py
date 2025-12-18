@@ -394,6 +394,155 @@ class PeerSync:
         self._rate_limit_tracking[peer_ip].append(now)
         return True
     
+    async def pull_config_from_peer(self, peer: str) -> Optional[Dict[str, Any]]:
+        """Pull config from a specific peer (returns decrypted config or None on error)"""
+        peer_ip = peer.split(":")[0]
+        
+        # Check if we have peer's X25519 public key
+        if peer_ip not in self.peer_x25519_keys:
+            logger.warning(f"Missing X25519 public key for peer {peer_ip}")
+            return None
+        
+        peer_x25519_pub = self.peer_x25519_keys[peer_ip]
+        
+        if not self.x25519_private_key or not self.x25519_public_key:
+            logger.warning("Own X25519 keys not loaded")
+            return None
+        
+        try:
+            client = await self._get_client()
+            our_public_key_b64 = self.get_public_key_base64()
+            
+            # Sign GET request
+            url_path = "/api/v1/sync/local-ips"
+            request_data = f"GET:{url_path}".encode()
+            signature = self._sign_data(request_data)
+            
+            headers = {
+                "X-Peer-Public-Key": our_public_key_b64,
+                "X-Peer-Signature": signature
+            }
+            
+            url = f"http://{peer}{url_path}"
+            response = await client.get(url, headers=headers, timeout=self._timeout)
+            
+            if response.status_code != 200:
+                logger.warning(f"Failed to pull config from peer {peer_ip}: {response.status_code}")
+                return None
+            
+            # Parse response
+            sync_data = response.json()
+            encrypted_data = sync_data.get("encrypted_data", "")
+            nonce = sync_data.get("nonce", "")
+            peer_gen = sync_data.get('generation', {})
+            
+            # Verify signature from peer
+            peer_public_key_b64 = response.headers.get("X-Peer-Public-Key", "")
+            peer_signature = response.headers.get("X-Peer-Signature", "")
+            
+            if not peer_signature:
+                logger.warning(f"Missing signature from peer {peer_ip}")
+                return None
+            
+            # Verify signature
+            sig_data = f"{encrypted_data}:{nonce}".encode()
+            if not self._verify_signature(sig_data, peer_signature, peer_x25519_pub):
+                logger.warning(f"Invalid signature from peer {peer_ip}")
+                return None
+            
+            # Decrypt config
+            try:
+                decrypted_config = self._decrypt_config(encrypted_data, nonce, peer_x25519_pub)
+                # Ensure generation is included
+                decrypted_config["generation"] = peer_gen
+                return decrypted_config
+            except Exception as e:
+                logger.error(f"Failed to decrypt config from peer {peer_ip}: {e}")
+                return None
+                
+        except httpx.TimeoutException:
+            logger.warning(f"Timeout pulling config from peer {peer_ip}")
+            return None
+        except Exception as e:
+            logger.error(f"Error pulling config from peer {peer}: {e}")
+            return None
+    
+    async def find_newest_config_peer(self) -> Optional[Dict[str, Any]]:
+        """Find peer with newest config (only reachable peers) - returns {peer, timestamp} or None"""
+        if not self._peer_nodes:
+            return None
+        
+        newest_peer = None
+        newest_timestamp = None
+        
+        # Check all peers in parallel
+        async def check_peer(peer: str) -> Optional[Dict[str, Any]]:
+            peer_ip = peer.split(":")[0]
+            try:
+                # Check if peer is reachable and get config status
+                client = await self._get_client()
+                our_public_key_b64 = self.get_public_key_base64()
+                
+                # Sign request
+                url_path = "/api/v1/sync/config-status"
+                request_data = f"GET:{url_path}".encode()
+                signature = self._sign_data(request_data)
+                
+                headers = {
+                    "X-Peer-Public-Key": our_public_key_b64,
+                    "X-Peer-Signature": signature
+                }
+                
+                url = f"http://{peer}{url_path}"
+                response = await client.get(url, headers=headers, timeout=self._timeout)
+                
+                if response.status_code == 200:
+                    status = response.json()
+                    timestamp_str = status.get("timestamp")
+                    if timestamp_str:
+                        # Parse timestamp (format: "YYYY-MM-DD HH:MM:SS")
+                        try:
+                            from datetime import datetime
+                            timestamp = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+                            return {
+                                "peer": peer,
+                                "peer_ip": peer_ip,
+                                "peer_name": self.peer_names.get(peer_ip, peer_ip),
+                                "timestamp": timestamp,
+                                "timestamp_str": timestamp_str
+                            }
+                        except Exception as e:
+                            logger.warning(f"Failed to parse timestamp from peer {peer_ip}: {e}")
+                            return None
+                return None
+            except Exception as e:
+                logger.debug(f"Peer {peer_ip} not reachable: {e}")
+                return None
+        
+        # Check all peers in parallel
+        tasks = [check_peer(peer) for peer in self._peer_nodes]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Find newest timestamp
+        for result in results:
+            if isinstance(result, Exception):
+                continue
+            if result and result.get("timestamp"):
+                timestamp = result["timestamp"]
+                if newest_timestamp is None or timestamp > newest_timestamp:
+                    newest_timestamp = timestamp
+                    newest_peer = result
+        
+        if newest_peer:
+            return {
+                "peer": newest_peer["peer"],
+                "peer_ip": newest_peer["peer_ip"],
+                "peer_name": newest_peer["peer_name"],
+                "timestamp_str": newest_peer["timestamp_str"]
+            }
+        
+        return None
+    
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client with connection pooling"""
         if self._client is None:

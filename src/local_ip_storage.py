@@ -117,6 +117,39 @@ class LocalIPStorage:
             # Update path for future use
             self.storage_path = home_storage
     
+    def set_config_from_peer(self, config_data: Dict[str, Any]) -> None:
+        """Set complete config from peer (including generation) - used for pull operations"""
+        # Ensure structure
+        if "local_ips" not in config_data:
+            config_data["local_ips"] = {}
+        if "settings" not in config_data:
+            config_data["settings"] = {}
+        if "generation" not in config_data:
+            # If no generation, create one
+            config_data["generation"] = {
+                "sequence": 0,
+                "node_id": self._get_node_id(),
+                "timestamp": time.time(),
+                "content_hash": ""
+            }
+            config_data["generation"]["content_hash"] = self._calculate_content_hash(config_data)
+        
+        self._storage = config_data
+        
+        # Save without incrementing generation (we use peer's generation)
+        try:
+            self.storage_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.storage_path, 'w', encoding='utf-8') as f:
+                yaml.dump(self._storage, f, default_flow_style=False, allow_unicode=True)
+        except PermissionError:
+            # Try alternative path in user's home directory
+            home_storage = Path.home() / ".hetzner-dns" / "local_ips.yaml"
+            home_storage.parent.mkdir(parents=True, exist_ok=True)
+            with open(home_storage, 'w', encoding='utf-8') as f:
+                yaml.dump(self._storage, f, default_flow_style=False, allow_unicode=True)
+            # Update path for future use
+            self.storage_path = home_storage
+    
     def set_local_ip(self, zone_id: str, rrset_id: str, local_ip: str, port: Optional[int] = None) -> None:
         """Set local IP for a DNS record"""
         storage = self._load_storage()

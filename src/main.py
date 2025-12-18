@@ -3276,6 +3276,101 @@ async def get_peer_config_status(request: Request, peer: str):
         raise HTTPException(status_code=500, detail=f"Error getting peer config status: {str(e)}")
 
 
+@app.post("/api/v1/peer-sync/pull-config")
+async def pull_config_from_peer(request: Request, peer: str):
+    """Pull config from a specific peer and overwrite local config"""
+    if not request.session.get("authenticated", False):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    username = request.session.get("username", "admin")
+    audit_log = get_audit_log()
+    
+    try:
+        from src.peer_sync import get_peer_sync
+        from src.local_ip_storage import get_local_ip_storage
+        
+        peer_sync = get_peer_sync()
+        storage = get_local_ip_storage()
+        
+        # Pull config from peer
+        config_data = await peer_sync.pull_config_from_peer(peer)
+        
+        if config_data is None:
+            audit_log.log(
+                action=AuditAction.PEER_SYNC_PULL_CONFIG,
+                username=username,
+                request=request,
+                success=False,
+                error="Failed to pull config from peer",
+                details={"peer": peer}
+            )
+            raise HTTPException(status_code=500, detail="Failed to pull config from peer")
+        
+        # Overwrite local config
+        storage.set_config_from_peer(config_data)
+        
+        # Log success
+        audit_log.log(
+            action=AuditAction.PEER_SYNC_PULL_CONFIG,
+            username=username,
+            request=request,
+            success=True,
+            details={
+                "peer": peer,
+                "peer_name": peer_sync.peer_names.get(peer.split(":")[0], peer)
+            }
+        )
+        
+        return {
+            "success": True,
+            "message": f"Config successfully pulled from {peer_sync.peer_names.get(peer.split(':')[0], peer)}",
+            "peer": peer
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error pulling config from peer: {e}")
+        audit_log.log(
+            action=AuditAction.PEER_SYNC_PULL_CONFIG,
+            username=username,
+            request=request,
+            success=False,
+            error=str(e),
+            details={"peer": peer}
+        )
+        raise HTTPException(status_code=500, detail=f"Error pulling config from peer: {str(e)}")
+
+
+@app.get("/api/v1/peer-sync/find-newest-config")
+async def find_newest_config(request: Request):
+    """Find peer with newest config (only reachable peers)"""
+    if not request.session.get("authenticated", False):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        from src.peer_sync import get_peer_sync
+        
+        peer_sync = get_peer_sync()
+        result = await peer_sync.find_newest_config_peer()
+        
+        if result is None:
+            return {
+                "found": False,
+                "message": "No reachable peers found or no peers configured"
+            }
+        
+        return {
+            "found": True,
+            "peer": result["peer"],
+            "peer_ip": result["peer_ip"],
+            "peer_name": result["peer_name"],
+            "timestamp": result["timestamp_str"]
+        }
+    except Exception as e:
+        logger.error(f"Error finding newest config: {e}")
+        raise HTTPException(status_code=500, detail=f"Error finding newest config: {str(e)}")
+
+
 if __name__ == "__main__":
     import uvicorn
     config = get_config_manager()
