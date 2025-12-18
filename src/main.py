@@ -50,7 +50,6 @@ from src.smtp_notifier import get_smtp_notifier
 from src.split_brain_protection import get_split_brain_protection
 from src.peer_sync import get_peer_sync
 from src.peer_auth import verify_peer_signature, verify_peer_signature_for_body
-from src.peer_sync_ntp_storage import get_peer_sync_ntp_storage
 from pydantic import BaseModel
 from typing import Optional, List, Dict
 import logging
@@ -71,10 +70,14 @@ async def trigger_auto_sync_if_enabled():
     """Trigger auto-sync if enabled (non-blocking) - enabled=true means always auto-sync"""
     try:
         peer_sync = get_peer_sync()
+        # Reload config to ensure we have the latest enabled state
+        peer_sync._load_config()
         if peer_sync._enabled:
             # Trigger sync in background (non-blocking)
             asyncio.create_task(peer_sync.sync_with_all_peers())
             logger.debug("Auto-sync triggered")
+        else:
+            logger.debug("Auto-sync skipped (enabled=False)")
     except Exception as e:
         logger.warning(f"Failed to trigger auto-sync: {e}")
 
@@ -1203,6 +1206,9 @@ async def set_auto_update(zone_id: str, rrset_id: str, request: SetAutoUpdateReq
     audit_log = get_audit_log()
     
     try:
+        # Before making local changes, check if we have the newest config
+        await check_and_pull_newest_config_if_needed()
+        
         storage = get_local_ip_storage()
         storage.set_auto_update(zone_id, rrset_id, request.enabled)
         
@@ -1266,6 +1272,9 @@ async def set_ttl(zone_id: str, rrset_id: str, request: SetTTLRequest, http_requ
                 )
             finally:
                 await client.close()
+        
+        # Before making local changes, check if we have the newest config
+        await check_and_pull_newest_config_if_needed()
         
         # Store TTL override
         storage = get_local_ip_storage()
@@ -1714,6 +1723,9 @@ async def save_local_ip(zone_id: str, rrset_id: str, request: SaveLocalIPRequest
         if not (re.match(ipv4_pattern, request.local_ip) or re.match(ipv6_pattern, request.local_ip)):
             raise HTTPException(status_code=400, detail="Invalid IP format")
         
+        # Before making local changes, check if we have the newest config
+        await check_and_pull_newest_config_if_needed()
+        
         storage = get_local_ip_storage()
         storage.set_local_ip(zone_id, rrset_id, request.local_ip, port=request.port)
         
@@ -1731,8 +1743,14 @@ async def save_local_ip(zone_id: str, rrset_id: str, request: SaveLocalIPRequest
 async def delete_local_ip(zone_id: str, rrset_id: str, token_id: Optional[str] = None):
     """Delete local IP for a DNS record"""
     try:
+        # Before making local changes, check if we have the newest config
+        await check_and_pull_newest_config_if_needed()
+        
         storage = get_local_ip_storage()
         storage.delete_local_ip(zone_id, rrset_id)
+        
+        # Trigger auto-sync if enabled
+        await trigger_auto_sync_if_enabled()
         
         return {"success": True, "zone_id": zone_id, "rrset_id": rrset_id}
     except Exception as e:
@@ -1802,6 +1820,9 @@ async def delete_rrset(zone_id: str, rrset_id: str, request: Request, token_id: 
 async def delete_rrset_settings(zone_id: str, rrset_id: str):
     """Delete all settings (local IP, auto-update, TTL) for a DNS record"""
     try:
+        # Before making local changes, check if we have the newest config
+        await check_and_pull_newest_config_if_needed()
+        
         storage = get_local_ip_storage()
         
         # Delete all settings for this record
@@ -1812,6 +1833,9 @@ async def delete_rrset_settings(zone_id: str, rrset_id: str):
             del storage_data["local_ips"][key]
             storage._storage = storage_data
             storage._save_storage()
+        
+        # Trigger auto-sync if enabled
+        await trigger_auto_sync_if_enabled()
         
         return {"success": True, "zone_id": zone_id, "rrset_id": rrset_id}
     except Exception as e:
@@ -2618,9 +2642,7 @@ async def get_peer_sync_config(request: Request):
             peer_nodes=peer_sync_config.get('peer_nodes', []),
             interval=peer_sync_config.get('interval', 300),
             timeout=peer_sync_config.get('timeout', 3.0),
-            ntp_enabled=peer_sync_config.get('ntp_enabled', False),
-            ntp_server=peer_sync_config.get('ntp_server', 'pool.ntp.org'),
-            timezone=peer_sync_config.get('timezone', 'UTC'),
+            # ntp_server and timezone removed - now stored in local_ips.yaml (ntp_config section)
             peer_public_keys=peer_sync_config.get('peer_public_keys', {})
         )
     except Exception as e:
@@ -2654,7 +2676,7 @@ async def update_peer_sync_config(request: Request, config_data: PeerSyncConfigR
         config['peer_sync']['interval'] = config_data.interval
         config['peer_sync']['timeout'] = config_data.timeout
         # max_retries and rate_limit removed - not needed when syncing on every change
-        # ntp_enabled, ntp_server, timezone removed - now stored in peer_sync_ntp.yaml (synchronized file)
+        # ntp_server and timezone removed - now stored in local_ips.yaml (ntp_config section)
         config['peer_sync']['peer_public_keys'] = config_data.peer_public_keys
         
         config_manager._config = config
@@ -2693,7 +2715,7 @@ async def update_peer_sync_config(request: Request, config_data: PeerSyncConfigR
                     "interval": config_data.interval,
                     "timeout": config_data.timeout,
                     # max_retries and rate_limit removed - not needed when syncing on every change
-                    # ntp_enabled removed - now stored in peer_sync_ntp.yaml
+                    # ntp_server and timezone removed - now stored in local_ips.yaml (ntp_config section)
                 }
             )
         
@@ -3035,6 +3057,13 @@ async def get_sync_local_ips(request: Request):
         import hmac
         import hashlib
         
+        # Check if peer-sync is enabled (don't send config if disabled)
+        peer_sync = get_peer_sync()
+        peer_sync._load_config()  # Reload to ensure latest state
+        if not peer_sync._enabled:
+            logger.debug(f"Peer-sync disabled, rejecting sync request from {peer_ip}")
+            raise HTTPException(status_code=403, detail="Peer-sync is disabled")
+        
         storage = get_local_ip_storage()
         data = storage._load_storage()
         generation = data.get('generation', {})
@@ -3144,11 +3173,18 @@ async def receive_sync_local_ips(request: Request):
         local_data = storage._load_storage()
         local_gen = local_data.get('generation', {})
         
+        # Debug logging
+        logger.info(f"Comparing generations: local_seq={local_gen.get('sequence', 0)}, remote_seq={remote_gen.get('sequence', 0)}, "
+                    f"local_ts={local_gen.get('timestamp', 0)}, remote_ts={remote_gen.get('timestamp', 0)}")
+        
         # Check if peer is newer
-        if is_newer(local_gen, remote_gen, local_data, remote_data):
-            # Complete config takeover
-            storage._storage = remote_data
-            storage._save_storage()
+        peer_is_newer = is_newer(local_gen, remote_gen, local_data, remote_data)
+        logger.info(f"is_newer() result: {peer_is_newer}")
+        
+        if peer_is_newer:
+            # Complete config takeover - use set_config_from_peer to preserve peer's generation
+            # (don't increment generation, we're taking over peer's config)
+            storage.set_config_from_peer(remote_data, merge_local_changes=False)
             logger.info(f"Config merged from peer {peer_ip}")
             return {"success": True, "merged": True}
         
@@ -3205,148 +3241,17 @@ async def get_config_status(request: Request):
         raise HTTPException(status_code=500, detail=f"Error getting config status: {str(e)}")
 
 
-# Peer Sync NTP Endpoints (for peer communication)
-
-@app.get("/api/v1/sync/peer-sync-ntp")
-async def get_sync_peer_sync_ntp(request: Request):
-    """Get peer_sync_ntp.yaml for peer sync (encrypted) - Peer-to-Peer endpoint"""
-    # Verify peer signature
-    try:
-        peer_x25519_pub, peer_ip = await verify_peer_signature(request)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Peer authentication error in get_sync_peer_sync_ntp: {e}")
-        raise HTTPException(status_code=403, detail="Peer authentication failed")
-    
-    try:
-        from src.peer_sync import get_peer_sync
-        import base64
-        import json
-        
-        ntp_storage = get_peer_sync_ntp_storage()
-        data = ntp_storage._load_storage()
-        generation = data.get('generation', {})
-        
-        # Get our peer sync instance
-        peer_sync = get_peer_sync()
-        if not peer_sync.x25519_private_key or not peer_sync.x25519_public_key:
-            raise HTTPException(status_code=500, detail="X25519 keys not available")
-        
-        # Encrypt config with peer's public key (ECDH)
-        encrypted_result = peer_sync._encrypt_config(data, peer_x25519_pub)
-        encrypted_data_b64 = encrypted_result["encrypted_data"]
-        nonce_b64 = encrypted_result["nonce"]
-        
-        # Sign encrypted data with our public key (HMAC-SHA256)
-        sig_data = f"{encrypted_data_b64}:{nonce_b64}".encode()
-        signature = peer_sync._sign_data(sig_data)
-        
-        # Get our public key as Base64
-        our_public_key_b64 = peer_sync.get_public_key_base64()
-        
-        response = Response(
-            content=json.dumps({
-                "encrypted_data": encrypted_data_b64,
-                "nonce": nonce_b64,
-                "generation": generation
-            }),
-            media_type="application/json",
-            headers={
-                "X-Peer-Public-Key": our_public_key_b64,
-                "X-Peer-Signature": signature
-            }
-        )
-        return response
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting sync peer-sync-ntp: {e}")
-        raise HTTPException(status_code=500, detail=f"Error getting sync peer-sync-ntp: {str(e)}")
-
-
-@app.post("/api/v1/sync/peer-sync-ntp")
-async def receive_sync_peer_sync_ntp(request: Request):
-    """Receive peer_sync_ntp.yaml from peer (encrypted) - Peer-to-Peer endpoint"""
-    # Verify peer signature first (before reading body)
-    try:
-        peer_x25519_pub, peer_ip = await verify_peer_signature(request)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Peer authentication error in receive_sync_peer_sync_ntp: {e}")
-        raise HTTPException(status_code=403, detail="Peer authentication failed")
-    
-    try:
-        from src.peer_sync import get_peer_sync, is_newer
-        import base64
-        import json
-        
-        # Read request body
-        body = await request.body()
-        sync_data = json.loads(body.decode('utf-8'))
-        
-        # Get encrypted data
-        encrypted_data = sync_data.get("encrypted_data", "")
-        nonce = sync_data.get("nonce", "")
-        remote_gen = sync_data.get('generation', {})
-        response_signature = request.headers.get("X-Peer-Signature", "")
-        peer_public_key_b64 = request.headers.get("X-Peer-Public-Key", "")
-        
-        if not encrypted_data or not nonce:
-            raise HTTPException(status_code=400, detail="Missing encrypted_data or nonce")
-        
-        if not response_signature:
-            raise HTTPException(status_code=400, detail="Missing signature")
-        
-        # Use provided public key or cached one
-        if not peer_x25519_pub:
-            raise HTTPException(status_code=400, detail="Missing peer public key")
-        
-        # Verify signature of POST request (same as local-ips endpoint)
-        try:
-            from src.peer_auth import verify_peer_signature_for_body
-            if not await verify_peer_signature_for_body(request, body, peer_x25519_pub, response_signature):
-                raise HTTPException(status_code=403, detail="Invalid signature for POST request")
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.warning(f"Signature verification failed for POST request: {e}")
-            raise HTTPException(status_code=403, detail="Invalid signature for POST request")
-        
-        # Decrypt config
-        remote_data = peer_sync._decrypt_config(encrypted_data, nonce, peer_x25519_pub)
-        remote_data["generation"] = remote_gen  # Ensure generation is included
-        
-        # Get local config
-        ntp_storage = get_peer_sync_ntp_storage()
-        local_data = ntp_storage._load_storage()
-        local_gen = local_data.get('generation', {})
-        
-        # Check if peer is newer
-        if is_newer(local_gen, remote_gen, local_data, remote_data):
-            # Complete config takeover
-            ntp_storage.set_config_from_peer(remote_data)
-            logger.info(f"NTP config merged from peer {peer_ip}")
-            return {"success": True, "merged": True}
-        
-        return {"success": True, "merged": False}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error receiving sync peer-sync-ntp: {e}")
-        raise HTTPException(status_code=500, detail=f"Error receiving sync peer-sync-ntp: {str(e)}")
-
+# Peer Sync NTP Endpoints (NTP config is now part of local_ips.yaml)
 
 @app.get("/api/v1/peer-sync/ntp-config")
 async def get_peer_sync_ntp_config(request: Request):
-    """Get NTP configuration from peer_sync_ntp.yaml"""
+    """Get NTP configuration from local_ips.yaml"""
     if not request.session.get("authenticated", False):
         raise HTTPException(status_code=401, detail="Not authenticated")
     
     try:
-        ntp_storage = get_peer_sync_ntp_storage()
-        ntp_config = ntp_storage.get_ntp_config()
+        storage = get_local_ip_storage()
+        ntp_config = storage.get_ntp_config()
         return ntp_config
     except Exception as e:
         logger.error(f"Error getting peer-sync NTP config: {e}")
@@ -3355,7 +3260,7 @@ async def get_peer_sync_ntp_config(request: Request):
 
 @app.put("/api/v1/peer-sync/ntp-config")
 async def update_peer_sync_ntp_config(request: Request):
-    """Update NTP configuration in peer_sync_ntp.yaml and trigger sync"""
+    """Update NTP configuration in local_ips.yaml and trigger sync"""
     if not request.session.get("authenticated", False):
         raise HTTPException(status_code=401, detail="Not authenticated")
     
@@ -3364,12 +3269,15 @@ async def update_peer_sync_ntp_config(request: Request):
     
     try:
         body = await request.json()
-        ntp_enabled = body.get("ntp_enabled", False)
         ntp_server = body.get("ntp_server", "pool.ntp.org")
         timezone = body.get("timezone", "UTC")
         
-        ntp_storage = get_peer_sync_ntp_storage()
-        ntp_storage.set_ntp_config(ntp_enabled, ntp_server, timezone)
+        # Before making local changes, check if we have the newest config
+        # If not, pull and merge first
+        await check_and_pull_newest_config_if_needed()
+        
+        storage = get_local_ip_storage()
+        storage.set_ntp_config(ntp_server, timezone)
         
         audit_log.log(
             action=AuditAction.PEER_SYNC_CONFIG_UPDATE,
@@ -3377,14 +3285,13 @@ async def update_peer_sync_ntp_config(request: Request):
             request=request,
             success=True,
             details={
-                "ntp_enabled": ntp_enabled,
                 "ntp_server": ntp_server,
                 "timezone": timezone,
                 "message": "NTP configuration updated"
             }
         )
         
-        # Trigger auto-sync to push NTP config to all peers
+        # Trigger auto-sync to push config to all peers (NTP config is now part of local_ips.yaml)
         await trigger_auto_sync_if_enabled()
         
         return {"success": True, "message": "NTP configuration updated and synced"}
@@ -3419,9 +3326,9 @@ async def get_current_time(request: Request):
                 # No timezone support, use UTC
                 ZoneInfo = None
         
-        # Get timezone from peer_sync_ntp.yaml
-        ntp_storage = get_peer_sync_ntp_storage()
-        ntp_config = ntp_storage.get_ntp_config()
+        # Get timezone from local_ips.yaml (ntp_config is now part of local_ips.yaml)
+        storage = get_local_ip_storage()
+        ntp_config = storage.get_ntp_config()
         timezone_str = ntp_config.get('timezone', 'UTC')
         
         # Get current time in configured timezone
@@ -3564,8 +3471,8 @@ async def pull_config_from_peer(request: Request, peer: str):
             )
             raise HTTPException(status_code=500, detail="Failed to pull config from peer")
         
-        # Overwrite local config
-        storage.set_config_from_peer(config_data)
+        # Overwrite local config (merge_local_changes=False for manual pull - user wants to overwrite)
+        storage.set_config_from_peer(config_data, merge_local_changes=False)
         
         # Log success
         audit_log.log(

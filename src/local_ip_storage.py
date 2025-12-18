@@ -36,6 +36,11 @@ class LocalIPStorage:
             self._storage["local_ips"] = {}
         if "settings" not in self._storage:
             self._storage["settings"] = {}
+        if "ntp_config" not in self._storage:
+            self._storage["ntp_config"] = {
+                "ntp_server": "pool.ntp.org",
+                "timezone": "UTC"
+            }
         if "generation" not in self._storage:
             self._storage["generation"] = {
                 "sequence": 0,
@@ -117,13 +122,25 @@ class LocalIPStorage:
             # Update path for future use
             self.storage_path = home_storage
     
-    def set_config_from_peer(self, config_data: Dict[str, Any]) -> None:
-        """Set complete config from peer (including generation) - used for pull operations"""
+    def set_config_from_peer(self, config_data: Dict[str, Any], merge_local_changes: bool = False) -> None:
+        """
+        Set complete config from peer (including generation) - used for pull operations
+        
+        Args:
+            config_data: Config data from peer
+            merge_local_changes: If True, merge local changes (local_ips, ntp_config) into peer config
+                                before overwriting. This preserves local changes when pulling newer config.
+        """
         # Ensure structure
         if "local_ips" not in config_data:
             config_data["local_ips"] = {}
         if "settings" not in config_data:
             config_data["settings"] = {}
+        if "ntp_config" not in config_data:
+            config_data["ntp_config"] = {
+                "ntp_server": "pool.ntp.org",
+                "timezone": "UTC"
+            }
         if "generation" not in config_data:
             # If no generation, create one
             config_data["generation"] = {
@@ -133,6 +150,23 @@ class LocalIPStorage:
                 "content_hash": ""
             }
             config_data["generation"]["content_hash"] = self._calculate_content_hash(config_data)
+        
+        # If merge_local_changes is True, preserve local changes
+        if merge_local_changes:
+            current_storage = self._load_storage()
+            # Merge local_ips: keep local entries that don't exist in peer config
+            local_ips = current_storage.get("local_ips", {})
+            peer_ips = config_data.get("local_ips", {})
+            # Merge: peer config takes precedence, but add local-only entries
+            merged_ips = {**peer_ips}
+            for key, value in local_ips.items():
+                if key not in merged_ips:
+                    merged_ips[key] = value
+            config_data["local_ips"] = merged_ips
+            
+            # Merge ntp_config: keep local ntp_config if it was recently changed
+            # (For now, we keep peer's ntp_config as it's newer, but this could be enhanced)
+            # Actually, ntp_config should be synchronized, so we use peer's version
         
         self._storage = config_data
         
@@ -400,6 +434,25 @@ class LocalIPStorage:
                     zones_with_auto_update.add(zone_id)
         
         return zones_with_auto_update
+    
+    def get_ntp_config(self) -> Dict[str, Any]:
+        """Get NTP configuration"""
+        storage = self._load_storage()
+        return storage.get("ntp_config", {
+            "ntp_server": "pool.ntp.org",
+            "timezone": "UTC"
+        })
+    
+    def set_ntp_config(self, ntp_server: str, timezone: str) -> None:
+        """Set NTP configuration"""
+        storage = self._load_storage()
+        if "ntp_config" not in storage:
+            storage["ntp_config"] = {}
+        storage["ntp_config"]["ntp_server"] = ntp_server
+        storage["ntp_config"]["timezone"] = timezone
+        
+        self._storage = storage
+        self._save_storage()
 
 
 # Global instance

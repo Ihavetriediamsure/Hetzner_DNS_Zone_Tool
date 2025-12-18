@@ -471,9 +471,7 @@ class ConfigManager:
                 'timeout': 3.0,
                 'max_retries': 3,  # Deprecated - kept for backward compatibility
                 'rate_limit': 1.0,  # Deprecated - kept for backward compatibility
-                'ntp_enabled': False,
-                'ntp_server': 'pool.ntp.org',
-                'timezone': 'UTC',
+                # ntp_server and timezone removed - now stored in local_ips.yaml (ntp_config section)
                 'peer_public_keys': {}  # peer_ip -> {name, public_key} (public_key is X25519 Base64 PEM)
             }
         }
