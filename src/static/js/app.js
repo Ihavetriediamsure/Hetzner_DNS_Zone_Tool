@@ -3730,35 +3730,43 @@ async function loadPeerSyncConfig() {
             // Update UI with status info in table
             peerMap.forEach((peerData, peerAddress) => {
                 const status = statusMap.get(peerData.ip);
-                if (status) {
-                    // Update status badge
-                    const statusCell = document.getElementById(`peerStatus_${peerData.ip}`);
-                    if (statusCell) {
-                        const statusBadge = status.latency !== null && status.latency >= 0 ?
-                            '<span style="background-color: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.9em; font-family: inherit;">Online</span>' :
-                            '<span style="background-color: #f44336; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.9em; font-family: inherit;">Offline</span>';
-                        statusCell.innerHTML = statusBadge;
+                
+                // Update status badge
+                const statusCell = document.getElementById(`peerStatus_${peerData.ip}`);
+                if (statusCell) {
+                    if (status && status.latency !== null && status.latency >= 0) {
+                        statusCell.innerHTML = '<span style="background-color: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.9em; font-family: inherit;">Online</span>';
+                    } else {
+                        statusCell.innerHTML = '<span style="background-color: #f44336; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.9em; font-family: inherit;">Offline</span>';
                     }
-                    
-                    // Update public IP
-                    const publicIpCell = document.getElementById(`peerPublicIp_${peerData.ip}`);
-                    if (publicIpCell) {
-                        const publicIp = status.configStatus && status.configStatus.public_ip ? 
-                            status.configStatus.public_ip : null;
-                        publicIpCell.innerHTML = publicIp ? 
-                            '<span style="font-size: 0.9em; font-family: monospace; color: #333;">' + publicIp + '</span>' : 
-                            '<span style="color: #666; font-size: 0.9em; font-family: inherit;">N/A</span>';
-                    }
-                    
-                    // Update config last modified
-                    const configCell = document.getElementById(`peerConfigModified_${peerData.ip}`);
-                    if (configCell) {
-                        configCell.innerHTML = status.configStatus && status.configStatus.timestamp ? 
-                            '<span style="font-size: 0.9em; font-family: inherit;">' + status.configStatus.timestamp + '</span>' : '<span style="color: #666; font-size: 0.9em; font-family: inherit;">N/A</span>';
-                    }
-                    
-                    // Latency column removed - no longer displayed
                 }
+                
+                // Update public IP (always try to update, even if status is null)
+                const publicIpCell = document.getElementById(`peerPublicIp_${peerData.ip}`);
+                if (publicIpCell) {
+                    const publicIp = status && status.configStatus && status.configStatus.public_ip ? 
+                        status.configStatus.public_ip : null;
+                    if (publicIp) {
+                        publicIpCell.innerHTML = '<span style="font-size: 0.9em; font-family: monospace; color: #333;">' + publicIp + '</span>';
+                    } else {
+                        // Show N/A if public IP is not available
+                        publicIpCell.innerHTML = '<span style="color: #666; font-size: 0.9em; font-family: inherit;">N/A</span>';
+                    }
+                } else {
+                    console.warn(`Public IP cell not found for peer ${peerData.ip}`);
+                }
+                
+                // Update config last modified
+                const configCell = document.getElementById(`peerConfigModified_${peerData.ip}`);
+                if (configCell) {
+                    if (status && status.configStatus && status.configStatus.timestamp) {
+                        configCell.innerHTML = '<span style="font-size: 0.9em; font-family: inherit;">' + status.configStatus.timestamp + '</span>';
+                    } else {
+                        configCell.innerHTML = '<span style="color: #666; font-size: 0.9em; font-family: inherit;">N/A</span>';
+                    }
+                }
+                
+                // Latency column removed - no longer displayed
             });
         });
         
