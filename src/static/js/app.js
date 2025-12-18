@@ -4077,7 +4077,42 @@ async function loadPeerSyncStatus() {
         // Update peer status table
         const tbody = document.getElementById('peerStatusTableBody');
         tbody.innerHTML = '';
-        status.peer_statuses.forEach(peer => {
+        
+        // First, add local host row
+        try {
+            const ownStatusResponse = await fetch('/api/v1/peer-sync/own-config-status');
+            if (ownStatusResponse.ok) {
+                const ownStatus = await ownStatusResponse.json();
+                const localRow = document.createElement('tr');
+                localRow.style.backgroundColor = '#f0f8ff'; // Light blue background to distinguish local host
+                localRow.innerHTML = `
+                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>Local Host</strong> <span style="color: #2196F3; font-size: 0.85em;">(This Server)</span></td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">-</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;"><span style="background-color: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px;">Online</span></td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">${ownStatus.timestamp || 'N/A'}</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">-</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">-</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">-</td>
+                `;
+                tbody.appendChild(localRow);
+            }
+        } catch (e) {
+            console.warn('Failed to load own config status:', e);
+        }
+        
+        // Then add peer rows - fetch config status for each peer asynchronously
+        const peerRowsPromises = status.peer_statuses.map(async (peer) => {
+            let lastModified = '-';
+            try {
+                const configStatusResponse = await fetch(`/api/v1/peer-sync/get-peer-config-status?peer=${encodeURIComponent(peer.peer_ip)}`);
+                if (configStatusResponse.ok) {
+                    const configStatus = await configStatusResponse.json();
+                    lastModified = configStatus.timestamp || '-';
+                }
+            } catch (e) {
+                console.warn(`Failed to get config status for peer ${peer.peer_ip}:`, e);
+            }
+            
             const row = document.createElement('tr');
             const statusBadge = peer.status === 'success' ? 
                 '<span style="background-color: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px;">Success</span>' :
@@ -4087,13 +4122,19 @@ async function loadPeerSyncStatus() {
                 <td style="padding: 10px; border: 1px solid #ddd;">${peer.peer_name}</td>
                 <td style="padding: 10px; border: 1px solid #ddd;">${peer.peer_ip}</td>
                 <td style="padding: 10px; border: 1px solid #ddd;">${statusBadge}</td>
+                <td style="padding: 10px; border: 1px solid #ddd;">${lastModified}</td>
                 <td style="padding: 10px; border: 1px solid #ddd;">${peer.last_sync ? new Date(peer.last_sync).toLocaleString() : 'Never'}</td>
                 <td style="padding: 10px; border: 1px solid #ddd;">${peer.success_rate}%</td>
                 <td style="padding: 10px; border: 1px solid #ddd;">
                     <button class="btn btn-secondary" onclick="testPeerConnection('${peer.peer_ip}')">Test</button>
                 </td>
             `;
-            tbody.appendChild(row);
+            return row;
+        });
+        
+        // Wait for all peer rows to be created, then append them
+        Promise.all(peerRowsPromises).then(rows => {
+            rows.forEach(row => tbody.appendChild(row));
         });
         
         // Update sync events table (sort descending by timestamp - newest first)
