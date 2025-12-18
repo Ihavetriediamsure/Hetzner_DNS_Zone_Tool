@@ -2858,10 +2858,11 @@ async def get_peer_sync_status(request: Request):
         }
         
         # Build peer statuses
+        from src.peer_sync import extract_peer_ip
         peer_statuses = []
         peer_stats = stats.get("peer_stats", {})
         for peer in status.get("peer_nodes", []):
-            peer_ip = peer.split(":")[0]
+            peer_ip = extract_peer_ip(peer)
             peer_name = peer_sync.peer_names.get(peer_ip, peer_ip)
             peer_stat = peer_stats.get(peer_ip, {})
             
@@ -3453,10 +3454,10 @@ async def get_peer_config_status(request: Request, peer: str):
         raise HTTPException(status_code=401, detail="Not authenticated")
     
     try:
-        from src.peer_sync import get_peer_sync
+        from src.peer_sync import get_peer_sync, extract_peer_ip, normalize_peer_url
         
         peer_sync = get_peer_sync()
-        peer_ip = peer.split(':')[0]
+        peer_ip = extract_peer_ip(peer)
         
         # Check if we have peer's public key
         if peer_ip not in peer_sync.peer_x25519_keys:
@@ -3467,6 +3468,8 @@ async def get_peer_config_status(request: Request, peer: str):
         our_public_key_b64 = peer_sync.get_public_key_base64()
         
         # Sign request
+        from src.peer_sync import normalize_peer_url
+        
         url_path = "/api/v1/sync/config-status"
         request_data = f"GET:{url_path}".encode()
         signature = peer_sync._sign_data(request_data)
@@ -3476,7 +3479,7 @@ async def get_peer_config_status(request: Request, peer: str):
             "X-Peer-Signature": signature
         }
         
-        url = f"http://{peer}{url_path}"
+        url = f"{normalize_peer_url(peer)}{url_path}"
         response = await client.get(url, headers=headers)
         
         if response.status_code == 200:
@@ -3500,7 +3503,7 @@ async def pull_config_from_peer(request: Request, peer: str):
     audit_log = get_audit_log()
     
     try:
-        from src.peer_sync import get_peer_sync
+        from src.peer_sync import get_peer_sync, extract_peer_ip
         from src.local_ip_storage import get_local_ip_storage
         
         peer_sync = get_peer_sync()
@@ -3531,13 +3534,13 @@ async def pull_config_from_peer(request: Request, peer: str):
             success=True,
             details={
                 "peer": peer,
-                "peer_name": peer_sync.peer_names.get(peer.split(":")[0], peer)
+                "peer_name": peer_sync.peer_names.get(extract_peer_ip(peer), peer)
             }
         )
         
         return {
             "success": True,
-            "message": f"Config successfully pulled from {peer_sync.peer_names.get(peer.split(':')[0], peer)}",
+            "message": f"Config successfully pulled from {peer_sync.peer_names.get(extract_peer_ip(peer), peer)}",
             "peer": peer
         }
     except HTTPException:

@@ -183,11 +183,13 @@ class SplitBrainProtection:
         async def check_peer(peer: str) -> Optional[Dict]:
             """Check a single peer (called in parallel)"""
             try:
-                # Extract peer IP from "IP:Port" format
-                peer_ip = peer.split(":")[0]
+                from src.peer_sync import extract_peer_ip, normalize_peer_url
                 
-                # Build URL
-                url = f"http://{peer}/api/v1/peer-sync/check-monitor-ip"
+                # Extract peer IP from any format (URL, IP:Port, IP, Domain)
+                peer_ip = extract_peer_ip(peer)
+                
+                # Build URL with proper schema
+                url = f"{normalize_peer_url(peer)}/api/v1/peer-sync/check-monitor-ip"
                 params = {"ip": monitor_ip}
                 if port:
                     params["port"] = port

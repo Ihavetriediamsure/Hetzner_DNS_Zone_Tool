@@ -27,6 +27,69 @@ from src.local_ip_storage import get_local_ip_storage
 logger = logging.getLogger(__name__)
 
 
+def normalize_peer_url(peer: str, default_port: int = 8412) -> str:
+    """
+    Normalize peer address to full URL format.
+    
+    Supports:
+    - Full URLs: http://192.168.1.100:8412, https://peer.example.com:443
+    - IP:Port format: 192.168.1.100:8412
+    - Domain:Port format: peer.example.com:443
+    - IP only: 192.168.1.100 (uses default port)
+    - Domain only: peer.example.com (uses default port)
+    
+    Args:
+        peer: Peer address in any supported format
+        default_port: Default port to use if not specified (default: 8412)
+    
+    Returns:
+        Full URL with schema (http:// or https://)
+    """
+    peer = peer.strip()
+    
+    # If already a full URL (contains ://), return as-is
+    if '://' in peer:
+        return peer
+    
+    # If contains port (has :), add http:// prefix
+    if ':' in peer:
+        return f"http://{peer}"
+    
+    # No port specified, add default port
+    return f"http://{peer}:{default_port}"
+
+
+def extract_peer_ip(peer: str) -> str:
+    """
+    Extract IP address or domain from peer address.
+    
+    Supports:
+    - Full URLs: http://192.168.1.100:8412 -> 192.168.1.100
+    - Full URLs with domain: https://peer.example.com:443 -> peer.example.com
+    - IP:Port format: 192.168.1.100:8412 -> 192.168.1.100
+    - Domain:Port format: peer.example.com:443 -> peer.example.com
+    - IP only: 192.168.1.100 -> 192.168.1.100
+    - Domain only: peer.example.com -> peer.example.com
+    
+    Args:
+        peer: Peer address in any format
+    
+    Returns:
+        IP address or domain (without port, without schema)
+    """
+    peer = peer.strip()
+    
+    # Remove schema if present
+    if '://' in peer:
+        peer = peer.split('://', 1)[1]
+    
+    # Extract IP/domain (remove port)
+    if ':' in peer:
+        return peer.split(':', 1)[0]
+    
+    return peer
+
+
 def calculate_content_hash(config_data: Dict) -> str:
     """Calculate hash of config content (without generation field)"""
     config_copy = config_data.copy()
@@ -242,8 +305,8 @@ class PeerSync:
             for peer_address, peer_data in peer_public_keys_config.items():
                 peer_name = peer_data.get('name', peer_address)
                 
-                # Extract IP from address (handle both "ip:port" and "ip" formats)
-                peer_ip = peer_address.split(":")[0] if ":" in peer_address else peer_address
+                # Extract IP from address (handle all formats: URL, IP:Port, IP, Domain)
+                peer_ip = extract_peer_ip(peer_address)
                 
                 self.peer_names[peer_ip] = peer_name
                 
@@ -368,7 +431,7 @@ class PeerSync:
     
     async def pull_config_from_peer(self, peer: str) -> Optional[Dict[str, Any]]:
         """Pull config from a specific peer (returns decrypted config or None on error)"""
-        peer_ip = peer.split(":")[0]
+        peer_ip = extract_peer_ip(peer)
         
         # Check if we have peer's X25519 public key
         if peer_ip not in self.peer_x25519_keys:
@@ -395,7 +458,7 @@ class PeerSync:
                 "X-Peer-Signature": signature
             }
             
-            url = f"http://{peer}{url_path}"
+            url = f"{normalize_peer_url(peer)}{url_path}"
             response = await client.get(url, headers=headers, timeout=self._timeout)
             
             if response.status_code != 200:
@@ -454,7 +517,7 @@ class PeerSync:
         
         # Check all peers in parallel
         async def check_peer(peer: str) -> Optional[Dict[str, Any]]:
-            peer_ip = peer.split(":")[0]
+            peer_ip = extract_peer_ip(peer)
             
             # Skip if we don't have peer's public key
             if peer_ip not in self.peer_x25519_keys:
@@ -476,7 +539,7 @@ class PeerSync:
                     "X-Peer-Signature": signature
                 }
                 
-                url = f"http://{peer}{url_path}"
+                url = f"{normalize_peer_url(peer)}{url_path}"
                 response = await client.get(url, headers=headers, timeout=self._timeout)
                 
                 if response.status_code == 200:
@@ -564,7 +627,7 @@ class PeerSync:
         # Create tasks for all peers (PARALLEL)
         async def sync_with_peer(peer: str) -> Optional[Dict]:
             """Synchronize with a single peer (bidirectional) - called in parallel"""
-            peer_ip = peer.split(":")[0]
+            peer_ip = extract_peer_ip(peer)
             
             # Rate limiting removed - not needed when syncing on every change (event-based)
             
@@ -613,7 +676,7 @@ class PeerSync:
                     "Content-Type": "application/json"
                 }
                 
-                post_url = f"http://{peer}{url_path}"
+                post_url = f"{normalize_peer_url(peer)}{url_path}"
                 
                 # Measure response time
                 request_start = time.time()
@@ -668,7 +731,7 @@ class PeerSync:
         rejected_peers = []
         for i, result in enumerate(results):
             peer = self._peer_nodes[i]
-            peer_ip = peer.split(":")[0]
+            peer_ip = extract_peer_ip(peer)
             response_time_ms = 0
             duration_ms = 0
             
@@ -766,7 +829,7 @@ class PeerSync:
         now = datetime.utcnow()
         timestamp = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"  # Include milliseconds
         
-        peer_ip = peer.split(":")[0]
+        peer_ip = extract_peer_ip(peer)
         peer_name = self.peer_names.get(peer_ip, peer)
         
         event = {
