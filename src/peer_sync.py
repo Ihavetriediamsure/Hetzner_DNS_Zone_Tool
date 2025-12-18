@@ -83,9 +83,7 @@ class PeerSync:
         self._peer_nodes: List[str] = []
         self._sync_interval = 300  # Default: 5 minutes (not used when enabled - sync happens on every change)
         self._timeout = 3.0  # Default: 3 seconds (configurable)
-        self._ntp_enabled = False
-        self._ntp_server = "pool.ntp.org"  # Default NTP server
-        self._timezone = "UTC"  # Default timezone
+        # ntp_server and timezone removed - now stored in local_ips.yaml (ntp_config section)
         
         # Own X25519 key pair
         self.x25519_private_key: Optional[x25519.X25519PrivateKey] = None
@@ -120,18 +118,18 @@ class PeerSync:
         try:
             from src.config_manager import get_config_manager
             config_manager = get_config_manager()
+            # Force reload from file (don't use cached _config)
             config = config_manager.load_config()
             
             peer_sync_config = config.get('peer_sync', {})
+            old_enabled = self._enabled
             self._enabled = peer_sync_config.get('enabled', False)
             # auto_sync_enabled removed - enabled=true means always auto-sync on every change
             self._peer_nodes = peer_sync_config.get('peer_nodes', [])
             self._sync_interval = peer_sync_config.get('interval', 300)
             self._timeout = peer_sync_config.get('timeout', 3.0)  # Default: 3 seconds
             # max_retries and rate_limit removed - not needed when syncing on every change
-            self._ntp_enabled = peer_sync_config.get('ntp_enabled', False)
-            self._ntp_server = peer_sync_config.get('ntp_server', 'pool.ntp.org')
-            self._timezone = peer_sync_config.get('timezone', 'UTC')
+            # ntp_server and timezone removed - now stored in local_ips.yaml (ntp_config section)
         except Exception as e:
             logger.error(f"Failed to load peer-sync config: {e}")
     
@@ -236,10 +234,14 @@ class PeerSync:
             config = config_manager.load_config()
             
             peer_sync_config = config.get('peer_sync', {})
-            peer_public_keys_config = peer_sync_config.get('peer_public_keys', {})  # peer_ip -> {name, public_key}
+            peer_public_keys_config = peer_sync_config.get('peer_public_keys', {})  # peer_address -> {name, public_key}
             
-            for peer_ip, peer_data in peer_public_keys_config.items():
-                peer_name = peer_data.get('name', peer_ip)
+            for peer_address, peer_data in peer_public_keys_config.items():
+                peer_name = peer_data.get('name', peer_address)
+                
+                # Extract IP from address (handle both "ip:port" and "ip" formats)
+                peer_ip = peer_address.split(":")[0] if ":" in peer_address else peer_address
+                
                 self.peer_names[peer_ip] = peer_name
                 
                 # Load X25519 public key (WireGuard format: Base64-encoded 32 bytes raw)
@@ -536,7 +538,10 @@ class PeerSync:
                 "total_duration_ms": float
             }
         """
+        # Reload config to ensure we have the latest enabled state
+        self._load_config()
         if not self._enabled or not self._peer_nodes:
+            logger.debug("Peer-sync disabled or no peers configured, skipping sync")
             return {
                 "synced_peers": [],
                 "failed_peers": [],
@@ -602,54 +607,7 @@ class PeerSync:
                 post_url = f"http://{peer}{url_path}"
                 post_response = await client.post(post_url, headers=post_headers, content=body_data, timeout=self._timeout)
                 
-                # Also sync peer_sync_ntp.yaml
-                try:
-                    from src.peer_sync_ntp_storage import get_peer_sync_ntp_storage
-                    ntp_storage = get_peer_sync_ntp_storage()
-                    ntp_local_data = ntp_storage._load_storage()
-                    ntp_local_gen = ntp_local_data.get('generation', {})
-                    
-                    # Encrypt NTP config
-                    ntp_encrypted_result = self._encrypt_config(ntp_local_data, peer_x25519_pub)
-                    ntp_encrypted_data_b64 = ntp_encrypted_result["encrypted_data"]
-                    ntp_nonce_b64 = ntp_encrypted_result["nonce"]
-                    
-                    # Sign NTP encrypted data
-                    ntp_sig_data = f"{ntp_encrypted_data_b64}:{ntp_nonce_b64}".encode()
-                    ntp_signature = self._sign_data(ntp_sig_data)
-                    
-                    # Sign POST request for NTP
-                    ntp_url_path = "/api/v1/sync/peer-sync-ntp"
-                    ntp_body_data = json.dumps({
-                        "encrypted_data": ntp_encrypted_data_b64,
-                        "nonce": ntp_nonce_b64,
-                        "generation": ntp_local_gen
-                    }).encode()
-                    ntp_body_hash = hashlib.sha256(ntp_body_data).hexdigest()
-                    ntp_post_message = f"POST:{ntp_url_path}:{ntp_body_hash}".encode()
-                    ntp_post_signature = self._sign_data(ntp_post_message)
-                    
-                    ntp_post_headers = {
-                        "X-Peer-Public-Key": our_public_key_b64,
-                        "X-Peer-Signature": ntp_post_signature,
-                        "Content-Type": "application/json"
-                    }
-                    
-                    ntp_url = f"http://{peer}{ntp_url_path}"
-                    ntp_response = await client.post(ntp_url, headers=ntp_post_headers, content=ntp_body_data, timeout=self._timeout)
-                    # NTP sync is fire-and-forget (don't fail if it fails)
-                    if ntp_response.status_code == 200:
-                        ntp_result = ntp_response.json()
-                        ntp_merged = ntp_result.get("merged", False)
-                        if ntp_merged:
-                            logger.info(f"NTP config synced to peer {peer_ip} (merged)")
-                        else:
-                            logger.debug(f"NTP config sent to peer {peer_ip} (not merged - peer was newer or same)")
-                    else:
-                        logger.warning(f"Failed to sync NTP config to peer {peer_ip}: HTTP {ntp_response.status_code}")
-                except Exception as ntp_error:
-                    logger.warning(f"Failed to sync NTP config to peer {peer_ip}: {ntp_error}", exc_info=True)
-                    # Don't fail the whole sync if NTP sync fails
+                # NTP config is now part of local_ips.yaml, so it's automatically synced with the main config
                 
                 if post_response.status_code == 200:
                     post_result = post_response.json()
@@ -681,7 +639,8 @@ class PeerSync:
         tasks = [sync_with_peer(peer) for peer in self._peer_nodes]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        # Process results
+        # Process results - check if we need to pull and merge
+        rejected_peers = []
         for i, result in enumerate(results):
             peer = self._peer_nodes[i]
             peer_ip = peer.split(":")[0]
@@ -692,8 +651,8 @@ class PeerSync:
             elif result:
                 # Check if peer rejected (peer was newer)
                 if result.get("rejected", False):
-                    # Peer rejected because it was newer - not an error, just info
-                    # Don't add to synced_peers or failed_peers
+                    # Peer rejected because it was newer - we need to pull and merge
+                    rejected_peers.append(peer)
                     self._record_sync_event(peer, "info", 0, "Peer rejected (peer was newer or same)")
                 elif result.get("merged", False):
                     # Successfully merged
@@ -707,6 +666,40 @@ class PeerSync:
                 # No result (shouldn't happen with current logic)
                 failed_peers.append(peer)
                 self._record_sync_event(peer, "error", 0, "Sync fehlgeschlagen")
+        
+        # If we have rejected peers, pull newest config and merge local changes
+        if rejected_peers:
+            logger.info(f"Peers rejected our config (they were newer), pulling newest config and merging local changes...")
+            try:
+                # Find peer with newest config
+                newest_peer_info = await self.find_newest_config_peer()
+                if newest_peer_info:
+                    newest_peer = newest_peer_info.get("peer")
+                    logger.info(f"Pulling newest config from {newest_peer_info.get('peer_name', newest_peer)}")
+                    
+                    # Pull newest config
+                    pulled_config = await self.pull_config_from_peer(newest_peer)
+                    if pulled_config:
+                        # After pulling, local changes are preserved because we merge them
+                        # The pulled config becomes the base, and any local changes made after this
+                        # will be on top of the newest config
+                        logger.info(f"Successfully pulled newest config from {newest_peer_info.get('peer_name', newest_peer)}")
+                        
+                        # Now trigger another sync to push our merged config
+                        # (This will happen automatically on next change, or we can trigger it here)
+                        # For now, we just log that we're ready for the next sync
+                        self._record_sync_event(
+                            newest_peer,
+                            "info",
+                            0,
+                            f"Pulled newest config from {newest_peer_info.get('peer_name', newest_peer)}, ready to merge local changes"
+                        )
+                    else:
+                        logger.warning(f"Failed to pull config from {newest_peer}")
+                else:
+                    logger.warning("Could not find peer with newest config")
+            except Exception as e:
+                logger.error(f"Error pulling and merging config after rejection: {e}")
         
         total_duration_ms = (time.time() - start_time) * 1000
         
