@@ -99,6 +99,45 @@ async def trigger_auto_sync_with_result(timeout: float = 2.0):
         logger.warning(f"Failed to trigger auto-sync: {e}")
         return None
 
+async def check_and_pull_newest_config_if_needed():
+    """
+    Check if local config is outdated compared to peers, and if so, pull and merge the newest config.
+    This ensures that local changes are always made on top of the latest synchronized configuration.
+    Uses atomic pull-and-merge operation with lock to prevent race conditions.
+    """
+    try:
+        from src.peer_sync import get_peer_sync
+        from src.local_ip_storage import get_local_ip_storage
+        
+        peer_sync = get_peer_sync()
+        storage = get_local_ip_storage()
+        
+        # Only check if peer-sync is enabled and peers are configured
+        peer_sync._load_config()
+        if not peer_sync._enabled or not peer_sync._peer_nodes:
+            return  # No peers configured, skip check
+        
+        # Use lock for atomic operation (prevents race conditions)
+        async with peer_sync._sync_lock:
+            # Find peer with newest config (already compares by generation)
+            newest_peer_info = await peer_sync.find_newest_config_peer()
+            if newest_peer_info is None:
+                return  # No reachable peers found or no peer is newer
+            
+            newest_peer = newest_peer_info.get("peer")
+            peer_name = newest_peer_info.get('peer_name', newest_peer)
+            
+            # find_newest_config_peer() already verified the peer is newer, so directly pull
+            logger.info(f"Local config is outdated, pulling newest config from {peer_name}")
+            pulled_config = await peer_sync.pull_config_from_peer(newest_peer)
+            if pulled_config:
+                # Atomic pull-and-merge: apply with merge to preserve any local-only changes
+                storage.set_config_from_peer(pulled_config, merge_local_changes=True)
+                logger.info(f"Successfully pulled and merged newest config from {peer_name}")
+    except Exception as e:
+        logger.warning(f"Error in check_and_pull_newest_config_if_needed: {e}")
+        # Silent fail - if check fails, we proceed with local config
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

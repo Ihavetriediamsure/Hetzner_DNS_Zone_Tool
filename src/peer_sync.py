@@ -85,6 +85,9 @@ class PeerSync:
         self._timeout = 3.0  # Default: 3 seconds (configurable)
         # ntp_server and timezone removed - now stored in local_ips.yaml (ntp_config section)
         
+        # Lock for atomic pull-and-merge operations
+        self._sync_lock = asyncio.Lock()
+        
         # Own X25519 key pair
         self.x25519_private_key: Optional[x25519.X25519PrivateKey] = None
         self.x25519_public_key: Optional[x25519.X25519PublicKey] = None
@@ -437,12 +440,17 @@ class PeerSync:
             return None
     
     async def find_newest_config_peer(self) -> Optional[Dict[str, Any]]:
-        """Find peer with newest config (only reachable peers) - returns {peer, timestamp} or None"""
+        """Find peer with newest config (only reachable peers) - compares by generation, returns {peer, generation} or None"""
         if not self._peer_nodes:
             return None
         
         newest_peer = None
-        newest_timestamp = None
+        newest_gen = None
+        
+        # Get local config for comparison
+        storage = get_local_ip_storage()
+        local_data = storage._load_storage()
+        local_gen = local_data.get('generation', {})
         
         # Check all peers in parallel
         async def check_peer(peer: str) -> Optional[Dict[str, Any]]:
@@ -473,22 +481,17 @@ class PeerSync:
                 
                 if response.status_code == 200:
                     status = response.json()
-                    timestamp_str = status.get("timestamp")
-                    if timestamp_str:
-                        # Parse timestamp (format: "YYYY-MM-DD HH:MM:SS")
-                        try:
-                            from datetime import datetime
-                            timestamp = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
-                            return {
-                                "peer": peer,
-                                "peer_ip": peer_ip,
-                                "peer_name": self.peer_names.get(peer_ip, peer_ip),
-                                "timestamp": timestamp,
-                                "timestamp_str": timestamp_str
-                            }
-                        except Exception as e:
-                            logger.warning(f"Failed to parse timestamp from peer {peer_ip}: {e}")
-                            return None
+                    peer_gen = status.get('generation', {})
+                    
+                    # Compare generations using is_newer()
+                    if is_newer(local_gen, peer_gen, local_data, {}):
+                        return {
+                            "peer": peer,
+                            "peer_ip": peer_ip,
+                            "peer_name": self.peer_names.get(peer_ip, peer_ip),
+                            "generation": peer_gen,
+                            "timestamp_str": status.get("timestamp", "")
+                        }
                 return None
             except Exception as e:
                 logger.debug(f"Peer {peer_ip} not reachable: {e}")
@@ -498,14 +501,19 @@ class PeerSync:
         tasks = [check_peer(peer) for peer in self._peer_nodes]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        # Find newest timestamp
+        # Find newest generation (using is_newer comparison)
         for result in results:
             if isinstance(result, Exception):
                 continue
-            if result and result.get("timestamp"):
-                timestamp = result["timestamp"]
-                if newest_timestamp is None or timestamp > newest_timestamp:
-                    newest_timestamp = timestamp
+            if result and result.get("generation"):
+                peer_gen = result["generation"]
+                # Compare with current newest
+                if newest_gen is None:
+                    newest_gen = peer_gen
+                    newest_peer = result
+                elif is_newer(newest_gen, peer_gen, {}, {}):
+                    # This peer is newer than current newest
+                    newest_gen = peer_gen
                     newest_peer = result
         
         if newest_peer:
@@ -513,7 +521,8 @@ class PeerSync:
                 "peer": newest_peer["peer"],
                 "peer_ip": newest_peer["peer_ip"],
                 "peer_name": newest_peer["peer_name"],
-                "timestamp_str": newest_peer["timestamp_str"]
+                "generation": newest_peer["generation"],
+                "timestamp_str": newest_peer.get("timestamp_str", "")
             }
         
         return None
@@ -605,7 +614,11 @@ class PeerSync:
                 }
                 
                 post_url = f"http://{peer}{url_path}"
+                
+                # Measure response time
+                request_start = time.time()
                 post_response = await client.post(post_url, headers=post_headers, content=body_data, timeout=self._timeout)
+                response_time_ms = (time.time() - request_start) * 1000
                 
                 # NTP config is now part of local_ips.yaml, so it's automatically synced with the main config
                 
@@ -617,7 +630,8 @@ class PeerSync:
                         return {
                             "peer": peer,
                             "peer_name": self.peer_names.get(peer_ip, peer_ip),
-                            "merged": True
+                            "merged": True,
+                            "response_time_ms": response_time_ms
                         }
                     else:
                         logger.info(f"Peer {peer_ip} rejected our config (peer was newer or same)")
@@ -626,14 +640,25 @@ class PeerSync:
                             "peer": peer,
                             "peer_name": self.peer_names.get(peer_ip, peer_ip),
                             "merged": False,
-                            "rejected": True
+                            "rejected": True,
+                            "response_time_ms": response_time_ms
                         }
                 else:
                     logger.warning(f"Failed to push config to peer {peer_ip}: {post_response.status_code}")
-                    return None
+                    return {
+                        "peer": peer,
+                        "peer_name": self.peer_names.get(peer_ip, peer_ip),
+                        "error": True,
+                        "response_time_ms": response_time_ms
+                    }
             except Exception as e:
                 logger.error(f"Error syncing with peer {peer}: {e}")
-                return None
+                return {
+                    "peer": peer,
+                    "peer_name": self.peer_names.get(peer_ip, peer_ip),
+                    "error": True,
+                    "response_time_ms": 0
+                }
         
         # Execute all syncs in parallel
         tasks = [sync_with_peer(peer) for peer in self._peer_nodes]
@@ -644,60 +669,80 @@ class PeerSync:
         for i, result in enumerate(results):
             peer = self._peer_nodes[i]
             peer_ip = peer.split(":")[0]
+            response_time_ms = 0
+            duration_ms = 0
             
             if isinstance(result, Exception):
                 failed_peers.append(peer)
-                self._record_sync_event(peer, "error", 0, str(result))
+                self._record_sync_event(peer, "error", duration_ms, str(result), response_time_ms)
             elif result:
+                response_time_ms = result.get("response_time_ms", 0)
+                duration_ms = response_time_ms  # Use response time as duration for now
+                
                 # Check if peer rejected (peer was newer)
                 if result.get("rejected", False):
                     # Peer rejected because it was newer - we need to pull and merge
                     rejected_peers.append(peer)
-                    self._record_sync_event(peer, "info", 0, "Peer rejected (peer was newer or same)")
+                    self._record_sync_event(peer, "info", duration_ms, "Peer rejected (peer was newer or same)", response_time_ms)
                 elif result.get("merged", False):
                     # Successfully merged
                     synced_peers.append(result.get("peer_name", peer))
-                    self._record_sync_event(peer, "success", 0, "Config synchronisiert")
+                    self._record_sync_event(peer, "success", duration_ms, "Config synchronisiert", response_time_ms)
+                elif result.get("error", False):
+                    # Error occurred
+                    failed_peers.append(peer)
+                    self._record_sync_event(peer, "error", duration_ms, "Sync fehlgeschlagen", response_time_ms)
                 else:
                     # Unknown result state
                     failed_peers.append(peer)
-                    self._record_sync_event(peer, "error", 0, "Unknown sync result")
+                    self._record_sync_event(peer, "error", duration_ms, "Unknown sync result", response_time_ms)
             else:
                 # No result (shouldn't happen with current logic)
                 failed_peers.append(peer)
-                self._record_sync_event(peer, "error", 0, "Sync fehlgeschlagen")
+                self._record_sync_event(peer, "error", duration_ms, "Sync fehlgeschlagen", response_time_ms)
         
         # If we have rejected peers, pull newest config and merge local changes
         if rejected_peers:
             logger.info(f"Peers rejected our config (they were newer), pulling newest config and merging local changes...")
             try:
-                # Find peer with newest config
-                newest_peer_info = await self.find_newest_config_peer()
-                if newest_peer_info:
-                    newest_peer = newest_peer_info.get("peer")
-                    logger.info(f"Pulling newest config from {newest_peer_info.get('peer_name', newest_peer)}")
-                    
-                    # Pull newest config
-                    pulled_config = await self.pull_config_from_peer(newest_peer)
-                    if pulled_config:
-                        # After pulling, local changes are preserved because we merge them
-                        # The pulled config becomes the base, and any local changes made after this
-                        # will be on top of the newest config
-                        logger.info(f"Successfully pulled newest config from {newest_peer_info.get('peer_name', newest_peer)}")
+                # Use lock for atomic pull-and-merge operation
+                async with self._sync_lock:
+                    # Find peer with newest config (compares by generation)
+                    newest_peer_info = await self.find_newest_config_peer()
+                    if newest_peer_info:
+                        newest_peer = newest_peer_info.get("peer")
+                        peer_name = newest_peer_info.get('peer_name', newest_peer)
+                        logger.info(f"Pulling newest config from {peer_name}")
                         
-                        # Now trigger another sync to push our merged config
-                        # (This will happen automatically on next change, or we can trigger it here)
-                        # For now, we just log that we're ready for the next sync
-                        self._record_sync_event(
-                            newest_peer,
-                            "info",
-                            0,
-                            f"Pulled newest config from {newest_peer_info.get('peer_name', newest_peer)}, ready to merge local changes"
-                        )
+                        # Pull newest config
+                        pulled_config = await self.pull_config_from_peer(newest_peer)
+                        if pulled_config:
+                            # Atomic pull-and-merge: apply the pulled config to local storage, merging any local changes
+                            storage = get_local_ip_storage()
+                            try:
+                                storage.set_config_from_peer(pulled_config, merge_local_changes=True)
+                                logger.info(f"Successfully pulled and applied newest config from {peer_name}")
+                                
+                                self._record_sync_event(
+                                    newest_peer,
+                                    "info",
+                                    0,
+                                    f"Pulled and merged newest config from {peer_name}",
+                                    0
+                                )
+                            except Exception as e:
+                                logger.error(f"Failed to apply pulled config to storage: {e}")
+                                self._record_sync_event(
+                                    newest_peer,
+                                    "error",
+                                    0,
+                                    f"Failed to apply pulled config: {e}",
+                                    0
+                                )
+                        else:
+                            logger.warning(f"Failed to pull config from {newest_peer}")
                     else:
-                        logger.warning(f"Failed to pull config from {newest_peer}")
-                else:
-                    logger.warning("Could not find peer with newest config")
+                        logger.warning("Could not find peer with newest config")
             except Exception as e:
                 logger.error(f"Error pulling and merging config after rejection: {e}")
         
@@ -715,15 +760,18 @@ class PeerSync:
             "total_duration_ms": total_duration_ms
         }
     
-    def _record_sync_event(self, peer: str, status: str, duration_ms: float, details: str):
+    def _record_sync_event(self, peer: str, status: str, duration_ms: float, details: str, response_time_ms: float = 0):
         """Record a sync event for statistics"""
         # Use more precise timestamp with milliseconds
         now = datetime.utcnow()
         timestamp = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"  # Include milliseconds
         
+        peer_ip = peer.split(":")[0]
+        peer_name = self.peer_names.get(peer_ip, peer)
+        
         event = {
             "timestamp": timestamp,
-            "peer_name": self.peer_names.get(peer.split(":")[0], peer),
+            "peer_name": peer_name,
             "status": status,
             "duration_ms": duration_ms,
             "details": details
@@ -733,6 +781,40 @@ class PeerSync:
         # Keep only last 10 events
         if len(self._recent_events) > 10:
             self._recent_events.pop(0)
+        
+        # Update per-peer statistics
+        if peer_ip not in self._stats["peer_stats"]:
+            self._stats["peer_stats"][peer_ip] = {
+                "success_count": 0,
+                "fail_count": 0,
+                "avg_duration_ms": 0.0,
+                "avg_response_time_ms": 0.0,
+                "total_retries": 0,  # Deprecated (rate limiting removed)
+                "rate_limit_violations": 0  # Deprecated (rate limiting removed)
+            }
+        
+        peer_stat = self._stats["peer_stats"][peer_ip]
+        
+        # Update success/fail counts
+        if status == "success":
+            peer_stat["success_count"] = peer_stat.get("success_count", 0) + 1
+        elif status == "error":
+            peer_stat["fail_count"] = peer_stat.get("fail_count", 0) + 1
+        
+        # Update average duration (exponential moving average)
+        current_avg_duration = peer_stat.get("avg_duration_ms", 0.0)
+        total_attempts = peer_stat.get("success_count", 0) + peer_stat.get("fail_count", 0)
+        if total_attempts > 0:
+            # EMA with alpha = 0.3 (gives more weight to recent values)
+            alpha = 0.3
+            peer_stat["avg_duration_ms"] = alpha * duration_ms + (1 - alpha) * current_avg_duration
+        
+        # Update average response time (if provided)
+        if response_time_ms > 0:
+            current_avg_response = peer_stat.get("avg_response_time_ms", 0.0)
+            if total_attempts > 0:
+                alpha = 0.3
+                peer_stat["avg_response_time_ms"] = alpha * response_time_ms + (1 - alpha) * current_avg_response
     
     async def start(self):
         """Start background sync task"""
@@ -795,4 +877,3 @@ def get_peer_sync() -> PeerSync:
     if _peer_sync is None:
         _peer_sync = PeerSync()
     return _peer_sync
-
