@@ -790,7 +790,7 @@ async def list_zones(token_id: Optional[str] = None):
         finally:
             await client.close()
     except ValueError as e:
-        # Token nicht konfiguriert
+        # Token not configured
         if "token not configured" in str(e).lower():
             raise HTTPException(status_code=400, detail="New API token not configured. Please enter token in configuration tab.")
         raise HTTPException(status_code=500, detail=f"Error loading zones: {str(e)}")
