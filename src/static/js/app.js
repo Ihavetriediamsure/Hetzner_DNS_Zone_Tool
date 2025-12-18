@@ -3744,17 +3744,18 @@ async function loadPeerSyncPublicKeys() {
                 const ownStatus = await statusResponse.json();
                 const ownStatusDiv = document.getElementById('ownPeerStatus');
                 if (ownStatusDiv) {
-                    const timestampHtml = ownStatus.timestamp ? 
-                        `<div style="margin-top: 5px;"><strong>Local Last Modified:</strong> ${ownStatus.timestamp}</div>` :
-                        '<div style="margin-top: 5px;"><strong>Local Last Modified:</strong> <span style="color: #666;">N/A</span></div>';
-                    ownStatusDiv.innerHTML = timestampHtml;
+                    if (ownStatus.timestamp) {
+                        ownStatusDiv.innerHTML = `<div style="margin-top: 5px;"><strong>Local Last Modified:</strong> ${ownStatus.timestamp}</div>`;
+                    } else {
+                        ownStatusDiv.innerHTML = ''; // Don't show anything if no timestamp
+                    }
                 }
             }
         } catch (e) {
             console.warn('Failed to load own config status:', e);
             const ownStatusDiv = document.getElementById('ownPeerStatus');
             if (ownStatusDiv) {
-                ownStatusDiv.innerHTML = '<div style="margin-top: 5px;"><strong>Local Last Modified:</strong> <span style="color: #666;">N/A</span></div>';
+                ownStatusDiv.innerHTML = ''; // Don't show anything if error or no timestamp
             }
         }
     } catch (error) {
