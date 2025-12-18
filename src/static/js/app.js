@@ -3958,6 +3958,7 @@ async function savePeerNode(peerIp) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 enabled: currentConfig.enabled,
+                auto_sync_enabled: currentConfig.auto_sync_enabled || false,
                 interval: currentConfig.interval,
                 timeout: currentConfig.timeout,
                 max_retries: currentConfig.max_retries,
@@ -3968,7 +3969,10 @@ async function savePeerNode(peerIp) {
             })
         });
         
-        if (!response.ok) throw new Error('Failed to save peer node');
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || 'Failed to save peer node');
+        }
         
         // Update data-original attributes
         addressInput.setAttribute('data-original', peerAddress);
@@ -4064,6 +4068,7 @@ async function removePeerNode(peerIp) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 enabled: currentConfig.enabled,
+                auto_sync_enabled: currentConfig.auto_sync_enabled || false,
                 interval: currentConfig.interval,
                 timeout: currentConfig.timeout,
                 max_retries: currentConfig.max_retries,
@@ -4074,7 +4079,10 @@ async function removePeerNode(peerIp) {
             })
         });
         
-        if (!response.ok) throw new Error('Failed to remove peer node');
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || 'Failed to remove peer node');
+        }
         
         showToast('Peer node removed successfully', 'success');
         await loadPeerSyncConfig();

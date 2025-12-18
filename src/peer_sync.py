@@ -478,6 +478,12 @@ class PeerSync:
         # Check all peers in parallel
         async def check_peer(peer: str) -> Optional[Dict[str, Any]]:
             peer_ip = peer.split(":")[0]
+            
+            # Skip if we don't have peer's public key
+            if peer_ip not in self.peer_x25519_keys:
+                logger.debug(f"Skipping peer {peer_ip} - no public key configured")
+                return None
+            
             try:
                 # Check if peer is reachable and get config status
                 client = await self._get_client()
