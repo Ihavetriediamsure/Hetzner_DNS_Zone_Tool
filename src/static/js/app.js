@@ -3754,7 +3754,7 @@ async function loadPeerSyncPublicKeys() {
             console.warn('Failed to load own config status:', e);
             const ownStatusDiv = document.getElementById('ownPeerStatus');
             if (ownStatusDiv) {
-                ownStatusDiv.innerHTML = '<div style="margin-top: 5px;"><strong>Last Modified:</strong> <span style="color: #666;">N/A</span></div>';
+                ownStatusDiv.innerHTML = '<div style="margin-top: 5px;"><strong>Config Last Modified:</strong> <span style="color: #666;">N/A</span></div>';
             }
         }
     } catch (error) {
@@ -4376,8 +4376,8 @@ function calculateConfigAge(timestampStr) {
 function buildPeerStatusHtml(status) {
     // Only show timestamp (modification date) - this is what changes when config is updated
     const timestampHtml = status.configStatus && status.configStatus.timestamp ? 
-        `<div style="margin-top: 5px;"><strong>Last Modified:</strong> ${status.configStatus.timestamp}</div>` :
-        '<div style="margin-top: 5px;"><strong>Last Modified:</strong> <span style="color: #666;">N/A</span></div>';
+        `<div style="margin-top: 5px;"><strong>Config Last Modified:</strong> ${status.configStatus.timestamp}</div>` :
+        '<div style="margin-top: 5px;"><strong>Config Last Modified:</strong> <span style="color: #666;">N/A</span></div>';
     
     const latencyHtml = status.latency !== null ? 
         `<div style="margin-top: 5px;"><strong>Latency:</strong> ${status.latency}ms</div>` :
