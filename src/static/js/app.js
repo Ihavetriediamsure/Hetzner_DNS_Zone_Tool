@@ -585,7 +585,8 @@ async function loadZoneRRSets(zoneId, zoneName, tokenId = null) {
             if (!existsInDNS) {
                 tableHTML += `<span style="color: #dc3545;">${escapeHtml(savedLocalIP || '-')}</span>`;
             } else {
-                tableHTML += `<input type="text" class="local-ip-input" placeholder="e.g. 192.168.1.100" value="${escapeHtml(savedLocalIP)}" data-rrset-id="${rrsetId}" data-zone-id="${zoneId}" style="width: 100%;" onchange="saveLocalIPWithPort('${zoneId}', '${rrsetId}'); startAutomaticHealthChecks('${zoneId}');">`;
+                const ipInputSize = Math.max(15, (savedLocalIP || 'e.g. 192.168.1.100').length + 2);
+                tableHTML += `<input type="text" class="local-ip-input" placeholder="e.g. 192.168.1.100" value="${escapeHtml(savedLocalIP)}" data-rrset-id="${rrsetId}" data-zone-id="${zoneId}" size="${ipInputSize}" style="padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em; font-family: monospace; box-sizing: border-box;" onchange="saveLocalIPWithPort('${zoneId}', '${rrsetId}'); startAutomaticHealthChecks('${zoneId}');">`;
             }
             tableHTML += '</td>';
             
@@ -596,7 +597,8 @@ async function loadZoneRRSets(zoneId, zoneName, tokenId = null) {
                 tableHTML += `<span style="color: #dc3545;">${escapeHtml(savedPort || '-')}</span>`;
             } else {
                 const savedPort = rrset.port || '';
-                tableHTML += `<input type="number" class="local-ip-port-input" placeholder="Port" value="${escapeHtml(savedPort)}" data-rrset-id="${rrsetId}" data-zone-id="${zoneId}" min="1" max="65535" style="width: 100px;" onchange="debouncePortInput('${zoneId}', '${rrsetId}');">`;
+                const portInputSize = Math.max(5, (savedPort || '65535').toString().length + 1);
+                tableHTML += `<input type="number" class="local-ip-port-input" placeholder="Port" value="${escapeHtml(savedPort)}" data-rrset-id="${rrsetId}" data-zone-id="${zoneId}" min="1" max="65535" size="${portInputSize}" style="padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em; font-family: monospace; box-sizing: border-box;" onchange="debouncePortInput('${zoneId}', '${rrsetId}');">`;
             }
             tableHTML += '</td>';
             
@@ -620,7 +622,8 @@ async function loadZoneRRSets(zoneId, zoneName, tokenId = null) {
                 if (serverIP && currentIP === serverIP) {
                     ipClass += ' ip-match';
                 }
-                tableHTML += `<input type="text" class="${ipClass}" placeholder="IP Address" value="${escapeHtml(currentIP)}" data-rrset-id="${rrsetIdEscaped}" data-zone-id="${zoneIdEscaped}" data-record-type="${escapeHtml(rrset.type)}" onchange="savePublicIPForRecord('${zoneId}', '${rrsetId.replace(/'/g, "\\'")}', this.value)" style="width: 100%; padding: 4px; border: 1px solid #ddd; border-radius: 4px;">`;
+                const publicIpInputSize = Math.max(15, (currentIP || 'IP Address').length + 2);
+                tableHTML += `<input type="text" class="${ipClass}" placeholder="IP Address" value="${escapeHtml(currentIP)}" data-rrset-id="${rrsetIdEscaped}" data-zone-id="${zoneIdEscaped}" data-record-type="${escapeHtml(rrset.type)}" onchange="savePublicIPForRecord('${zoneId}', '${rrsetId.replace(/'/g, "\\'")}', this.value)" size="${publicIpInputSize}" style="padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em; font-family: monospace; box-sizing: border-box;">`;
             } else if (records.length > 0) {
                 // For other record types: Display only
                 tableHTML += `<span class="public-ip-value">${recordsDisplay}</span>`;
@@ -658,7 +661,7 @@ async function loadZoneRRSets(zoneId, zoneName, tokenId = null) {
                 if (currentTTL && !allowedTTLValues.includes(currentTTL)) {
                     customTTLOption = `<option value="${currentTTL}" selected>${currentTTL}s (Custom)</option>`;
                 }
-                tableHTML += `<select class="ttl-input" data-rrset-id="${rrsetIdEscaped}" data-zone-id="${zoneIdEscaped}" onchange="saveTTL('${zoneId}', '${rrsetId.replace(/'/g, "\\'")}', this.value)" style="width: 100%; padding: 4px; border: 1px solid #ddd; border-radius: 4px;">${customTTLOption}${ttlOptions}</select>`;
+                tableHTML += `<select class="ttl-input" data-rrset-id="${rrsetIdEscaped}" data-zone-id="${zoneIdEscaped}" onchange="saveTTL('${zoneId}', '${rrsetId.replace(/'/g, "\\'")}', this.value)" style="padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em; box-sizing: border-box;">${customTTLOption}${ttlOptions}</select>`;
             }
             tableHTML += '</td>';
             
@@ -668,7 +671,8 @@ async function loadZoneRRSets(zoneId, zoneName, tokenId = null) {
             if (!existsInDNS) {
                 tableHTML += `<span style="color: #dc3545;">${escapeHtml(commentValue || '-')}</span>`;
             } else {
-                tableHTML += `<input type="text" class="comment-input" placeholder="Comment (optional)" value="${escapeHtml(commentValue)}" data-rrset-id="${rrsetIdEscaped}" data-zone-id="${zoneIdEscaped}" onchange="saveComment('${zoneId}', '${rrsetId.replace(/'/g, "\\'")}', this.value)" style="width: 100%; padding: 4px; border: 1px solid #ddd; border-radius: 4px;">`;
+                const commentInputSize = Math.max(20, (commentValue || 'Comment (optional)').length + 2);
+                tableHTML += `<input type="text" class="comment-input" placeholder="Comment (optional)" value="${escapeHtml(commentValue)}" data-rrset-id="${rrsetIdEscaped}" data-zone-id="${zoneIdEscaped}" onchange="saveComment('${zoneId}', '${rrsetId.replace(/'/g, "\\'")}', this.value)" size="${commentInputSize}" style="padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em; box-sizing: border-box;">`;
             }
             tableHTML += '</td>';
             

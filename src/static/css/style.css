@@ -504,36 +504,10 @@ input[type="password"]:focus {
 }
 
 .rrsets-table {
-    width: 100%;
-    min-width: 1200px; /* Minimum width to ensure all columns are visible */
+    width: auto;
     border-collapse: collapse;
     background: white;
     table-layout: auto;
-}
-
-/* Responsive adjustments for smaller screens */
-@media (max-width: 1400px) {
-    .rrsets-table {
-        min-width: 1000px;
-    }
-}
-
-@media (max-width: 1200px) {
-    .rrsets-table {
-        min-width: 900px;
-    }
-}
-
-@media (max-width: 768px) {
-    .rrsets-table {
-        min-width: 800px;
-    }
-    
-    .table-container {
-        margin-left: -10px;
-        margin-right: -10px;
-        padding: 0 10px;
-    }
 }
 
 .rrsets-table thead {
@@ -685,12 +659,11 @@ input[type="password"]:focus {
 }
 
 .rrsets-table .local-ip-cell {
-    min-width: 150px;
+    /* Auto-adjust to content */
 }
 
 .local-ip-cell {
-    min-width: 250px;
-    max-width: 320px;
+    /* Auto-adjust to content */
 }
 
 .local-ip-input {
