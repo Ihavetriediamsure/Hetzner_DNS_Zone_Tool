@@ -3268,10 +3268,20 @@ async def get_config_status(request: Request):
         else:
             timestamp_str = None
         
+        # Get public IP for this peer
+        public_ip = None
+        try:
+            detector = get_ip_detector()
+            public_ip = await detector.get_public_ip(use_cache=True)  # Use cache to avoid delay
+        except Exception as e:
+            logger.debug(f"Failed to get public IP for config-status: {e}")
+            # Continue without public IP - not critical
+        
         return {
             "generation": local_gen,
             "config_hash": config_hash,
-            "timestamp": timestamp_str
+            "timestamp": timestamp_str,
+            "public_ip": public_ip
         }
     except HTTPException:
         raise

@@ -3691,6 +3691,7 @@ async function loadPeerSyncConfig() {
             // Initial status (will be updated when status data arrives)
             const statusBadge = '<span style="background-color: #999; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.9em; font-family: inherit;">Loading...</span>';
             const configLastModified = '<span style="color: #666; font-size: 0.9em; font-family: inherit;">Loading...</span>';
+            const publicIpPlaceholder = '<span style="color: #666; font-size: 0.9em; font-family: monospace;">Loading...</span>';
             
             row.innerHTML = `
                 <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em; font-family: inherit;">
@@ -3698,6 +3699,9 @@ async function loadPeerSyncConfig() {
                 </td>
                 <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em; font-family: inherit;">
                     <input type="text" id="peerName_${peerData.ip}" value="${peerData.name}" data-original="${peerData.name}" size="${Math.max(12, (peerData.name || peerData.ip).length + 2)}" style="padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em; font-family: inherit; box-sizing: border-box;">
+                </td>
+                <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em; font-family: monospace;" id="peerPublicIp_${peerData.ip}">
+                    ${publicIpPlaceholder}
                 </td>
                 <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em; font-family: monospace;">
                     <input type="text" id="peerPublicKey_${peerData.ip}" value="${peerData.public_key}" data-original="${peerData.public_key}" placeholder="32 bytes Base64" size="${Math.max(44, (peerData.public_key || '').length + 2)}" style="padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em; font-family: monospace; box-sizing: border-box;">
@@ -3734,6 +3738,16 @@ async function loadPeerSyncConfig() {
                             '<span style="background-color: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.9em; font-family: inherit;">Online</span>' :
                             '<span style="background-color: #f44336; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.9em; font-family: inherit;">Offline</span>';
                         statusCell.innerHTML = statusBadge;
+                    }
+                    
+                    // Update public IP
+                    const publicIpCell = document.getElementById(`peerPublicIp_${peerData.ip}`);
+                    if (publicIpCell) {
+                        const publicIp = status.configStatus && status.configStatus.public_ip ? 
+                            status.configStatus.public_ip : null;
+                        publicIpCell.innerHTML = publicIp ? 
+                            '<span style="font-size: 0.9em; font-family: monospace; color: #333;">' + publicIp + '</span>' : 
+                            '<span style="color: #666; font-size: 0.9em; font-family: inherit;">N/A</span>';
                     }
                     
                     // Update config last modified
@@ -3944,6 +3958,9 @@ async function addPeerNode() {
         </td>
         <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em; font-family: inherit;">
             <input type="text" id="peerName_${peerIp}" value="${peerIp}" data-original="${peerIp}" size="${Math.max(12, peerIp.length + 2)}" style="padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em; font-family: inherit; box-sizing: border-box;">
+        </td>
+        <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em; font-family: monospace;" id="peerPublicIp_${peerIp}">
+            <span style="color: #666; font-size: 0.9em; font-family: inherit;">-</span>
         </td>
         <td style="padding: 10px; border: 1px solid #ddd; font-size: 0.9em; font-family: monospace;">
             <input type="text" id="peerPublicKey_${peerIp}" value="" data-original="" placeholder="32 bytes Base64" size="46" style="padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em; font-family: monospace; box-sizing: border-box;">
