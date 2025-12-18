@@ -464,8 +464,8 @@ class ConfigManager:
                 'cache_path': os.getenv('SYNC_CACHE_PATH', './config/sync_data.json')
             },
             'peer_sync': {
-                'enabled': False,
-                'auto_sync_enabled': False,  # Automatically sync on every change
+                'enabled': False,  # If enabled, automatically sync on every change
+                'auto_sync_enabled': False,  # Deprecated - kept for backward compatibility, always same as enabled
                 'peer_nodes': [],
                 'interval': 300,
                 'timeout': 5,

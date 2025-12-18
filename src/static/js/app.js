@@ -3560,16 +3560,7 @@ async function loadPeerSyncConfig() {
         if (!response.ok) throw new Error('Failed to load peer-sync config');
         const config = await response.json();
         
-        // Update UI - auto-sync enabled also enables peer sync
-        const autoSyncCheckbox = document.getElementById('peerSyncAutoSyncEnabled');
-        if (autoSyncCheckbox) {
-            autoSyncCheckbox.checked = Boolean(config.auto_sync_enabled);
-            // If auto-sync is enabled, peer sync must also be enabled
-            if (config.auto_sync_enabled && !config.enabled) {
-                // Auto-enable peer sync if auto-sync is enabled
-                config.enabled = true;
-            }
-        }
+        // auto_sync_enabled removed - enabled=true means always auto-sync on every change
         const timeoutInput = document.getElementById('peerSyncTimeout');
         if (timeoutInput) timeoutInput.value = config.timeout;
         const maxRetriesInput = document.getElementById('peerSyncMaxRetries');
@@ -3803,14 +3794,10 @@ async function savePeerSyncConfig() {
         const currentResponse = await fetch('/api/v1/peer-sync/config');
         const currentConfig = await currentResponse.json();
         
-        const autoSyncEnabled = document.getElementById('peerSyncAutoSyncEnabled').checked;
-        
-        // If auto-sync is enabled, peer sync must also be enabled
-        const peerSyncEnabled = autoSyncEnabled || currentConfig.enabled;
-        
+        // auto_sync_enabled removed - enabled=true means always auto-sync on every change
+        // Keep current enabled state (no separate auto-sync checkbox anymore)
         const config = {
-            enabled: peerSyncEnabled,
-            auto_sync_enabled: autoSyncEnabled,
+            enabled: currentConfig.enabled,
             peer_nodes: currentConfig.peer_nodes || [],
             interval: currentConfig.interval || 300,  // Keep interval in config but don't show in UI
             timeout: parseInt(document.getElementById('peerSyncTimeout').value),
@@ -3958,7 +3945,6 @@ async function savePeerNode(peerIp) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 enabled: currentConfig.enabled,
-                auto_sync_enabled: currentConfig.auto_sync_enabled || false,
                 interval: currentConfig.interval,
                 timeout: currentConfig.timeout,
                 max_retries: currentConfig.max_retries,
@@ -3998,10 +3984,12 @@ async function savePeerNode(peerIp) {
         showToast('Peer node saved successfully', 'success');
         await loadPeerSyncConfig();
         
-        // Ask if user wants to pull newest config from peers
-        const shouldPull = confirm('Neuer Peer hinzugefügt. Soll die neueste Config von den verfügbaren Peers gepullt werden?');
-        if (shouldPull) {
+        // Automatically pull newest config from peers (no dialog)
+        try {
             await pullNewestConfigFromPeers();
+        } catch (error) {
+            // Silent fail - if no peers available or error, just continue
+            console.debug('Auto-pull newest config failed (expected if no peers available):', error);
         }
     } catch (error) {
         showToast('Error saving peer node: ' + error.message, 'error');
@@ -4021,21 +4009,12 @@ async function pullNewestConfigFromPeers() {
         const result = await response.json();
         
         if (!result.found) {
-            showToast(result.message || 'Keine erreichbaren Peers gefunden', 'warning');
+            // Silent fail - no peers available is not an error
             return;
         }
         
-        // Confirm pull from newest peer
-        const shouldPull = confirm(
-            `Neueste Config gefunden bei:\n` +
-            `Peer: ${result.peer_name} (${result.peer_ip})\n` +
-            `Last Modified: ${result.timestamp}\n\n` +
-            `Config von diesem Peer pullen?`
-        );
-        
-        if (shouldPull) {
-            await pullConfigFromPeer(result.peer, result.peer_name);
-        }
+        // Automatically pull from newest peer (no confirmation dialog)
+        await pullConfigFromPeer(result.peer, result.peer_name, false);
     } catch (error) {
         showToast('Error finding newest config: ' + error.message, 'error');
     }
@@ -4068,7 +4047,6 @@ async function removePeerNode(peerIp) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 enabled: currentConfig.enabled,
-                auto_sync_enabled: currentConfig.auto_sync_enabled || false,
                 interval: currentConfig.interval,
                 timeout: currentConfig.timeout,
                 max_retries: currentConfig.max_retries,
@@ -4268,13 +4246,13 @@ async function triggerPeerSync() {
     }
 }
 
-// Check if auto-sync is enabled
+// Check if auto-sync is enabled (enabled=true means always auto-sync)
 async function isAutoSyncEnabled() {
     try {
         const response = await fetch('/api/v1/peer-sync/config');
         if (!response.ok) return false;
         const config = await response.json();
-        return Boolean(config.enabled && config.auto_sync_enabled);
+        return Boolean(config.enabled);  // enabled=true means always auto-sync
     } catch (error) {
         return false;
     }
@@ -4410,14 +4388,18 @@ async function testPeerConnection(peer) {
 }
 
 // Pull config from peer
-async function pullConfigFromPeer(peerAddress, peerName) {
-    // Confirmation dialog
-    if (!confirm(`Config von ${peerName} (${peerAddress}) pullen?\n\nDie lokale Config wird überschrieben!`)) {
-        return;
+async function pullConfigFromPeer(peerAddress, peerName, showConfirmation = true) {
+    // Confirmation dialog (only for manual pulls)
+    if (showConfirmation) {
+        if (!confirm(`Config von ${peerName} (${peerAddress}) pullen?\n\nDie lokale Config wird überschrieben!`)) {
+            return;
+        }
     }
     
     try {
-        showToast('Pulling config from peer...', 'info');
+        if (showConfirmation) {
+            showToast('Pulling config from peer...', 'info');
+        }
         
         const response = await fetch(`/api/v1/peer-sync/pull-config?peer=${encodeURIComponent(peerAddress)}`, {
             method: 'POST',

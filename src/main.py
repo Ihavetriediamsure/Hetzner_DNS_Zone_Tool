@@ -67,10 +67,10 @@ logger = logging.getLogger(__name__)
 
 
 async def trigger_auto_sync_if_enabled():
-    """Trigger auto-sync if enabled (non-blocking)"""
+    """Trigger auto-sync if enabled (non-blocking) - enabled=true means always auto-sync"""
     try:
         peer_sync = get_peer_sync()
-        if peer_sync._enabled and peer_sync.is_auto_sync_enabled():
+        if peer_sync._enabled:
             # Trigger sync in background (non-blocking)
             asyncio.create_task(peer_sync.sync_with_all_peers())
             logger.debug("Auto-sync triggered")
@@ -78,10 +78,10 @@ async def trigger_auto_sync_if_enabled():
         logger.warning(f"Failed to trigger auto-sync: {e}")
 
 async def trigger_auto_sync_with_result(timeout: float = 2.0):
-    """Trigger auto-sync if enabled and wait for result (with timeout)"""
+    """Trigger auto-sync if enabled and wait for result (with timeout) - enabled=true means always auto-sync"""
     try:
         peer_sync = get_peer_sync()
-        if peer_sync._enabled and peer_sync.is_auto_sync_enabled():
+        if peer_sync._enabled:
             # Trigger sync and wait for result with timeout
             sync_task = peer_sync.sync_with_all_peers()
             try:
@@ -2614,7 +2614,6 @@ async def get_peer_sync_config(request: Request):
         
         return PeerSyncConfigResponse(
             enabled=peer_sync_config.get('enabled', False),
-            auto_sync_enabled=peer_sync_config.get('auto_sync_enabled', False),
             peer_nodes=peer_sync_config.get('peer_nodes', []),
             interval=peer_sync_config.get('interval', 300),
             timeout=peer_sync_config.get('timeout', 5),
@@ -2647,7 +2646,9 @@ async def update_peer_sync_config(request: Request, config_data: PeerSyncConfigR
         
         old_enabled = config['peer_sync'].get('enabled', False)
         config['peer_sync']['enabled'] = config_data.enabled
-        config['peer_sync']['auto_sync_enabled'] = config_data.auto_sync_enabled
+        # auto_sync_enabled removed - enabled=true means always auto-sync on every change
+        # Keep auto_sync_enabled in config for backward compatibility, but set it to same as enabled
+        config['peer_sync']['auto_sync_enabled'] = config_data.enabled
         config['peer_sync']['peer_nodes'] = config_data.peer_nodes
         config['peer_sync']['interval'] = config_data.interval
         config['peer_sync']['timeout'] = config_data.timeout

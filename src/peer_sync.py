@@ -79,10 +79,9 @@ class PeerSync:
     """Manages peer-to-peer configuration synchronization"""
     
     def __init__(self):
-        self._enabled = False
-        self._auto_sync_enabled = False  # Automatically sync on every change
+        self._enabled = False  # If enabled, automatically sync on every change
         self._peer_nodes: List[str] = []
-        self._sync_interval = 300  # Default: 5 minutes
+        self._sync_interval = 300  # Default: 5 minutes (not used when enabled - sync happens on every change)
         self._timeout = 5  # Default: 5 seconds
         self._max_retries = 3
         self._rate_limit = 1.0  # Requests per second per peer
@@ -128,7 +127,7 @@ class PeerSync:
             
             peer_sync_config = config.get('peer_sync', {})
             self._enabled = peer_sync_config.get('enabled', False)
-            self._auto_sync_enabled = peer_sync_config.get('auto_sync_enabled', False)
+            # auto_sync_enabled removed - enabled=true means always auto-sync on every change
             self._peer_nodes = peer_sync_config.get('peer_nodes', [])
             self._sync_interval = peer_sync_config.get('interval', 300)
             self._timeout = peer_sync_config.get('timeout', 5)
@@ -139,8 +138,8 @@ class PeerSync:
             logger.error(f"Failed to load peer-sync config: {e}")
     
     def is_auto_sync_enabled(self) -> bool:
-        """Check if auto-sync is enabled"""
-        return self._auto_sync_enabled
+        """Check if auto-sync is enabled - enabled=true means always auto-sync"""
+        return self._enabled
     
     def _load_or_generate_x25519_key(self):
         """Load or generate X25519 key pair (encrypted storage)"""

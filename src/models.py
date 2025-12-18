@@ -221,10 +221,9 @@ class AuditLogConfigRequest(BaseModel):
 
 class PeerSyncConfigResponse(BaseModel):
     """Peer-Sync Configuration Response"""
-    enabled: bool
-    auto_sync_enabled: bool
+    enabled: bool  # If enabled, automatically sync on every change
     peer_nodes: List[str]
-    interval: int
+    interval: int  # Not used when enabled - kept for backward compatibility
     timeout: int
     max_retries: int
     rate_limit: float
@@ -233,10 +232,9 @@ class PeerSyncConfigResponse(BaseModel):
 
 class PeerSyncConfigRequest(BaseModel):
     """Peer-Sync Configuration Request"""
-    enabled: bool
-    auto_sync_enabled: bool
+    enabled: bool  # If enabled, automatically sync on every change
     peer_nodes: List[str]
-    interval: int = Field(ge=60, le=3600, description="Sync interval in seconds")
+    interval: int = Field(ge=60, le=3600, description="Sync interval in seconds (not used when enabled)")
     timeout: int = Field(ge=1, le=30, description="Request timeout in seconds")
     max_retries: int = Field(ge=0, le=10, description="Maximum retries")
     rate_limit: float = Field(ge=0.1, le=10.0, description="Rate limit (requests per second per peer)")
