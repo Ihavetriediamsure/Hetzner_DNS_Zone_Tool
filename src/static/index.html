@@ -640,61 +640,6 @@
                 </div>
             </div>
 
-            <!-- Sync Status & Statistics -->
-            <div class="config-section" style="border: 1px solid #ddd; padding: 20px; margin-top: 20px; border-radius: 4px;">
-                <h3>Sync Status & Statistics</h3>
-                
-                <!-- Overview -->
-                <div id="peerSyncOverview" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
-                    <!-- Will be populated by JavaScript -->
-                </div>
-
-                <!-- Peer Status Table -->
-                <div style="margin-bottom: 20px;">
-                    <h4>Peer-Status</h4>
-                    <table id="peerStatusTable" style="width: 100%; border-collapse: collapse;">
-                        <thead>
-                            <tr style="background-color: #f5f5f5;">
-                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Name</th>
-                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">IP:Port</th>
-                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Status</th>
-                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Config Last Modified</th>
-                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Last Sync</th>
-                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Success Rate</th>
-                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="peerStatusTableBody">
-                            <!-- Will be populated by JavaScript -->
-                        </tbody>
-                    </table>
-                </div>
-
-                <!-- Sync Events Log -->
-                <div>
-                    <h4>Last Sync Events</h4>
-                    <table id="syncEventsTable" style="width: 100%; border-collapse: collapse;">
-                        <thead>
-                            <tr style="background-color: #f5f5f5;">
-                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Zeitstempel</th>
-                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Peer Name</th>
-                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Status</th>
-                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Dauer</th>
-                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Details</th>
-                            </tr>
-                        </thead>
-                        <tbody id="syncEventsTableBody">
-                            <!-- Will be populated by JavaScript -->
-                        </tbody>
-                    </table>
-                </div>
-
-                <!-- Actions -->
-                <div style="margin-top: 20px; display: flex; gap: 10px;">
-                    <button class="btn btn-primary" onclick="triggerPeerSync()">Sync Now</button>
-                    <button class="btn btn-secondary" onclick="loadPeerSyncStatus()">Refresh Status</button>
-                </div>
-            </div>
         </div>
 
     </div>

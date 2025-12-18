@@ -110,7 +110,6 @@ document.addEventListener('DOMContentLoaded', async function() {
             // Load peer-sync config when peer-sync tab is opened
             if (targetTab === 'peer-sync') {
                 loadPeerSyncConfig();
-                loadPeerSyncStatus();
                 // Always load public key when tab is opened
                 loadPeerSyncPublicKeys();
             }
@@ -3895,7 +3894,6 @@ async function savePeerSyncConfig() {
         
         showToast('Peer-Sync configuration saved and synced', 'success');
         await loadPeerSyncConfig();
-        await loadPeerSyncStatus();
         
         // Update current time display after saving
         updateCurrentServerTime();
@@ -4165,144 +4163,7 @@ async function removePeerNode(peerIp) {
 // Note: addPeerKey, savePeerKey, removePeerKey functions removed
 // Peer keys are now managed together with peer nodes in addPeerNode/updatePeerKey
 
-// Load Peer-Sync status
-async function loadPeerSyncStatus() {
-    try {
-        const response = await fetch('/api/v1/peer-sync/status');
-        if (!response.ok) throw new Error('Failed to load peer-sync status');
-        const status = await response.json();
-        
-        // Update overview
-        const overview = document.getElementById('peerSyncOverview');
-        overview.innerHTML = `
-            <div style="border: 1px solid #ddd; padding: 15px; border-radius: 4px; text-align: center;">
-                <div style="font-size: 2em; font-weight: bold; color: #4CAF50;">${status.overview.total_successful_syncs || 0}</div>
-                <div style="color: #666;">Successful Syncs</div>
-            </div>
-            <div style="border: 1px solid #ddd; padding: 15px; border-radius: 4px; text-align: center;">
-                <div style="font-size: 2em; font-weight: bold; color: #f44336;">${status.overview.total_failed_syncs || 0}</div>
-                <div style="color: #666;">Failed Syncs</div>
-            </div>
-            <div style="border: 1px solid #ddd; padding: 15px; border-radius: 4px; text-align: center;">
-                <div style="font-size: 2em; font-weight: bold; color: #2196F3;">${status.overview.overall_success_rate || 0}%</div>
-                <div style="color: #666;">Success Rate</div>
-            </div>
-            <div style="border: 1px solid #ddd; padding: 15px; border-radius: 4px; text-align: center;">
-                <div style="font-size: 1.5em; font-weight: bold; color: #FF9800;">${status.overview.average_sync_duration_ms || 0}ms</div>
-                <div style="color: #666;">Avg Sync Duration</div>
-            </div>
-        `;
-        
-        // Update peer status table
-        const tbody = document.getElementById('peerStatusTableBody');
-        tbody.innerHTML = '';
-        
-        // First, add local host row (only once, with unique ID to prevent duplicates)
-        try {
-            const ownStatusResponse = await fetch('/api/v1/peer-sync/own-config-status');
-            if (ownStatusResponse.ok) {
-                const ownStatus = await ownStatusResponse.json();
-                const localRow = document.createElement('tr');
-                localRow.id = 'localHostRow'; // Unique ID to prevent duplicates
-                localRow.style.backgroundColor = '#f0f8ff'; // Light blue background to distinguish local host
-                localRow.innerHTML = `
-                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>Local Host</strong> <span style="color: #2196F3; font-size: 0.85em;">(This Server)</span></td>
-                    <td style="padding: 10px; border: 1px solid #ddd;">-</td>
-                    <td style="padding: 10px; border: 1px solid #ddd;"><span style="background-color: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px;">Online</span></td>
-                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>Local:</strong> ${ownStatus.timestamp || 'N/A'}</td>
-                    <td style="padding: 10px; border: 1px solid #ddd;">-</td>
-                    <td style="padding: 10px; border: 1px solid #ddd;">-</td>
-                    <td style="padding: 10px; border: 1px solid #ddd;">-</td>
-                `;
-                // Only append if it doesn't already exist (shouldn't happen after innerHTML = '', but safety check)
-                if (!document.getElementById('localHostRow')) {
-                    tbody.appendChild(localRow);
-                }
-            }
-        } catch (e) {
-            console.warn('Failed to load own config status:', e);
-        }
-        
-        // Then add peer rows - fetch config status for each peer asynchronously
-        const peerRowsPromises = status.peer_statuses.map(async (peer) => {
-            let lastModified = '-';
-            try {
-                const configStatusResponse = await fetch(`/api/v1/peer-sync/get-peer-config-status?peer=${encodeURIComponent(peer.peer_ip)}`);
-                if (configStatusResponse.ok) {
-                    const configStatus = await configStatusResponse.json();
-                    lastModified = configStatus.timestamp || '-';
-                }
-            } catch (e) {
-                console.warn(`Failed to get config status for peer ${peer.peer_ip}:`, e);
-            }
-            
-            const row = document.createElement('tr');
-            const statusBadge = peer.status === 'success' ? 
-                '<span style="background-color: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px;">Success</span>' :
-                '<span style="background-color: #f44336; color: white; padding: 4px 8px; border-radius: 4px;">Error</span>';
-            
-            // Build peer address (IP:Port format)
-            const peerAddress = peer.peer_ip.includes(':') ? peer.peer_ip : `${peer.peer_ip}:8412`;
-            
-            // Pull Config button (only show if we have lastModified timestamp)
-            const pullButtonHtml = lastModified !== '-' ? 
-                `<button class="btn btn-primary" onclick="pullConfigFromPeer('${peerAddress}', '${peer.peer_name}')" style="margin-left: 5px;">Pull Config</button>` :
-                '';
-            
-            row.innerHTML = `
-                <td style="padding: 10px; border: 1px solid #ddd;">${peer.peer_name}</td>
-                <td style="padding: 10px; border: 1px solid #ddd;">${peer.peer_ip}</td>
-                <td style="padding: 10px; border: 1px solid #ddd;">${statusBadge}</td>
-                <td style="padding: 10px; border: 1px solid #ddd;"><strong>Peer:</strong> ${lastModified}</td>
-                <td style="padding: 10px; border: 1px solid #ddd;">${peer.last_sync ? new Date(peer.last_sync).toLocaleString() : 'Never'}</td>
-                <td style="padding: 10px; border: 1px solid #ddd;">${peer.success_rate}%</td>
-                <td style="padding: 10px; border: 1px solid #ddd;">
-                    <button class="btn btn-secondary" onclick="testPeerConnection('${peer.peer_ip}')">Test</button>
-                    ${pullButtonHtml}
-                </td>
-            `;
-            return row;
-        });
-        
-        // Wait for all peer rows to be created, then append them
-        Promise.all(peerRowsPromises).then(rows => {
-            rows.forEach(row => tbody.appendChild(row));
-        });
-        
-        // Update sync events table (sort descending by timestamp - newest first)
-        const eventsTbody = document.getElementById('syncEventsTableBody');
-        eventsTbody.innerHTML = '';
-        const sortedEvents = [...status.recent_events].sort((a, b) => {
-            const timeA = new Date(a.timestamp).getTime();
-            const timeB = new Date(b.timestamp).getTime();
-            return timeB - timeA; // Descending (newest first)
-        });
-        sortedEvents.forEach(event => {
-            const row = document.createElement('tr');
-            let statusBadge;
-            if (event.status === 'success') {
-                statusBadge = '<span style="background-color: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px;">Success</span>';
-            } else if (event.status === 'info') {
-                statusBadge = '<span style="background-color: #2196F3; color: white; padding: 4px 8px; border-radius: 4px;">Info</span>';
-            } else {
-                statusBadge = '<span style="background-color: #f44336; color: white; padding: 4px 8px; border-radius: 4px;">Error</span>';
-            }
-            
-            row.innerHTML = `
-                <td style="padding: 10px; border: 1px solid #ddd;">${new Date(event.timestamp).toLocaleString()}</td>
-                <td style="padding: 10px; border: 1px solid #ddd;">${event.peer_name}</td>
-                <td style="padding: 10px; border: 1px solid #ddd;">${statusBadge}</td>
-                <td style="padding: 10px; border: 1px solid #ddd;">${event.duration_ms}ms</td>
-                <td style="padding: 10px; border: 1px solid #ddd;">${event.details || ''}</td>
-            `;
-            eventsTbody.appendChild(row);
-        });
-        
-    } catch (error) {
-        console.error('Error loading peer-sync status:', error);
-        showToast('Error loading peer-sync status: ' + error.message, 'error');
-    }
-}
+// loadPeerSyncStatus() function removed - Sync Status & Statistics section removed
 
 // Trigger manual sync
 async function triggerPeerSync() {
@@ -4333,7 +4194,7 @@ async function triggerPeerSync() {
             showToast(`Sync completed: ${result.synced_peers.length} peers synced, ${result.failed_peers.length} failed`, 'warning');
         }
         
-        await loadPeerSyncStatus();
+        // Status display removed - no need to refresh
     } catch (error) {
         showToast('Error triggering sync: ' + error.message, 'error');
     }
@@ -4447,8 +4308,7 @@ async function triggerAutoSyncWithBanner() {
                     console.log('No sync events found, sync might still be running');
                 }
                 
-                // Refresh the status display
-                await loadPeerSyncStatus();
+                // Status display removed - no need to refresh
             } catch (error) {
                 console.error('Error checking auto-sync status:', error);
                 // Don't show error banner - sync might still be running
@@ -4474,7 +4334,6 @@ async function testPeerConnection(peer) {
         
         const result = await response.json();
         showToast(`Connection test: ${result.success ? 'Success' : 'Failed'} (${result.latency_ms}ms)`, result.success ? 'success' : 'error');
-        await loadPeerSyncStatus();
     } catch (error) {
         showToast('Error testing connection: ' + error.message, 'error');
     }
@@ -4507,8 +4366,7 @@ async function pullConfigFromPeer(peerAddress, peerName, showConfirmation = true
         const result = await response.json();
         showToast(result.message || 'Config successfully pulled from peer', 'success');
         
-        // Reload peer sync status and config
-        await loadPeerSyncStatus();
+        // Reload peer sync config
         await loadPeerSyncConfig();
     } catch (error) {
         showToast('Error pulling config: ' + error.message, 'error');
@@ -4574,7 +4432,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const targetTab = this.getAttribute('data-tab');
             if (targetTab === 'peer-sync') {
                 loadPeerSyncConfig();
-                loadPeerSyncStatus();
             }
         });
     });
