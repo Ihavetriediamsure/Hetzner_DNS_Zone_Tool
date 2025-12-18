@@ -3367,7 +3367,7 @@ async def update_peer_sync_ntp_config(request: Request):
         ntp_storage.set_ntp_config(ntp_enabled, ntp_server, timezone)
         
         audit_log.log(
-            action=AuditAction.PEER_SYNC_CONFIG_CHANGED,
+            action=AuditAction.PEER_SYNC_CONFIG_UPDATE,
             username=username,
             request=request,
             success=True,
@@ -3386,7 +3386,7 @@ async def update_peer_sync_ntp_config(request: Request):
     except Exception as e:
         logger.error(f"Error updating peer-sync NTP config: {e}")
         audit_log.log(
-            action=AuditAction.PEER_SYNC_CONFIG_CHANGED,
+            action=AuditAction.PEER_SYNC_CONFIG_UPDATE,
             username=username,
             request=request,
             success=False,
