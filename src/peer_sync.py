@@ -639,9 +639,16 @@ class PeerSync:
                     ntp_response = await client.post(ntp_url, headers=ntp_post_headers, content=ntp_body_data, timeout=self._timeout)
                     # NTP sync is fire-and-forget (don't fail if it fails)
                     if ntp_response.status_code == 200:
-                        logger.debug(f"NTP config synced to peer {peer_ip}")
+                        ntp_result = ntp_response.json()
+                        ntp_merged = ntp_result.get("merged", False)
+                        if ntp_merged:
+                            logger.info(f"NTP config synced to peer {peer_ip} (merged)")
+                        else:
+                            logger.debug(f"NTP config sent to peer {peer_ip} (not merged - peer was newer or same)")
+                    else:
+                        logger.warning(f"Failed to sync NTP config to peer {peer_ip}: HTTP {ntp_response.status_code}")
                 except Exception as ntp_error:
-                    logger.debug(f"Failed to sync NTP config to peer {peer_ip}: {ntp_error}")
+                    logger.warning(f"Failed to sync NTP config to peer {peer_ip}: {ntp_error}", exc_info=True)
                     # Don't fail the whole sync if NTP sync fails
                 
                 if post_response.status_code == 200:
