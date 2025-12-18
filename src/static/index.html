@@ -595,8 +595,10 @@
                         <button class="btn btn-secondary" onclick="copyToClipboard('peerPublicKey')">Copy</button>
                     </div>
                 </div>
-                <div id="ownPeerStatus" style="margin-top: 15px; padding: 10px; background-color: #f5f5f5; border-radius: 4px;">
-                    <div style="color: #666; font-size: 0.9em;">Loading status...</div>
+                <div style="margin-top: 15px; padding: 10px; background-color: #e3f2fd; border: 1px solid #2196F3; border-radius: 4px;">
+                    <p style="margin: 0; color: #1565c0; font-size: 0.9em;">
+                        <strong>ℹ️ Info:</strong> The "Config Last Modified" timestamp for this server is displayed in the <strong>Peer-Status</strong> table below.
+                    </p>
                 </div>
                 <div style="margin-top: 15px; padding: 15px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
                     <p style="margin: 0; color: #856404; font-size: 0.9em;">
@@ -610,8 +612,29 @@
             <div class="config-section" style="border: 1px solid #ddd; padding: 20px; margin-top: 20px; border-radius: 4px;">
                 <h3>Peer Nodes & Keys</h3>
                 <p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">Configure peer nodes (IP:Port) and their 32-byte keys (Base64)</p>
-                <div id="peerNodesList" style="margin-bottom: 15px;"></div>
-                <div style="display: flex; gap: 10px;">
+                
+                <!-- Peer Nodes Table -->
+                <div style="margin-bottom: 15px; overflow-x: auto;">
+                    <table id="peerNodesTable" style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background-color: #f5f5f5;">
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Peer Address (IP:Port)</th>
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Peer Name</th>
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Public Key</th>
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Status</th>
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Config Last Modified</th>
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Latency</th>
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="peerNodesTableBody">
+                            <!-- Will be populated by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Add New Peer -->
+                <div style="display: flex; gap: 10px; margin-top: 15px;">
                     <input type="text" id="newPeerNodeInput" placeholder="10.0.0.2:8412" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; max-width: 300px;">
                     <button class="btn btn-primary" onclick="addPeerNode()">Add Peer</button>
                 </div>
@@ -635,7 +658,7 @@
                                 <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Name</th>
                                 <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">IP:Port</th>
                                 <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Status</th>
-                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Last Modified</th>
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Config Last Modified</th>
                                 <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Last Sync</th>
                                 <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Success Rate</th>
                                 <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Actions</th>

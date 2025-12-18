@@ -3603,8 +3603,7 @@ async function loadPeerSyncConfig() {
         }
         
         // Load peer nodes with keys (combined)
-        const peerNodesList = document.getElementById('peerNodesList');
-        peerNodesList.innerHTML = '';
+        // peerNodesList removed - now using table format
         
         // Create a map of peer nodes to their public keys
         const peerMap = new Map();
@@ -3682,52 +3681,81 @@ async function loadPeerSyncConfig() {
             }
         });
         
-        // Wait for all status requests (non-blocking, but update UI when ready)
+        // Display all peers in table format first (with placeholder status)
+        const tbody = document.getElementById('peerNodesTableBody');
+        tbody.innerHTML = '';
+        
+        peerMap.forEach((peerData, peerAddress) => {
+            const row = document.createElement('tr');
+            row.id = `peerNodeRow_${peerData.ip}`;
+            
+            // Initial status (will be updated when status data arrives)
+            const statusBadge = '<span style="background-color: #999; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.85em;">Loading...</span>';
+            const configLastModified = '<span style="color: #666;">Loading...</span>';
+            const latency = '<span style="color: #666;">Loading...</span>';
+            
+            row.innerHTML = `
+                <td style="padding: 10px; border: 1px solid #ddd;">
+                    <input type="text" id="peerAddress_${peerData.ip}" value="${peerAddress}" data-original="${peerAddress}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em;">
+                </td>
+                <td style="padding: 10px; border: 1px solid #ddd;">
+                    <input type="text" id="peerName_${peerData.ip}" value="${peerData.name}" data-original="${peerData.name}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em;">
+                </td>
+                <td style="padding: 10px; border: 1px solid #ddd;">
+                    <input type="text" id="peerPublicKey_${peerData.ip}" value="${peerData.public_key}" data-original="${peerData.public_key}" placeholder="32 bytes Base64" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 0.8em;">
+                </td>
+                <td style="padding: 10px; border: 1px solid #ddd;" id="peerStatus_${peerData.ip}">
+                    ${statusBadge}
+                </td>
+                <td style="padding: 10px; border: 1px solid #ddd;" id="peerConfigModified_${peerData.ip}">
+                    ${configLastModified}
+                </td>
+                <td style="padding: 10px; border: 1px solid #ddd;" id="peerLatency_${peerData.ip}">
+                    ${latency}
+                </td>
+                <td style="padding: 10px; border: 1px solid #ddd;">
+                    <button class="btn btn-primary" onclick="savePeerNode('${peerData.ip}')" style="padding: 4px 8px; font-size: 0.85em; margin-right: 5px;">Save</button>
+                    <button class="btn btn-secondary" onclick="removePeerNode('${peerData.ip}')" style="padding: 4px 8px; font-size: 0.85em;">Remove</button>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+        
+        // Wait for all status requests and update table
         Promise.all(peerStatusPromises).then(peerStatuses => {
             const statusMap = new Map();
             peerStatuses.forEach(status => {
                 statusMap.set(status.peerIp, status);
             });
             
-            // Update UI with status info
+            // Update UI with status info in table
             peerMap.forEach((peerData, peerAddress) => {
                 const status = statusMap.get(peerData.ip);
-                const statusDiv = document.getElementById(`peerStatus_${peerData.ip}`);
-                if (statusDiv && status) {
-                    // Only show timestamp (modification date) and latency
-                    const statusHtml = buildPeerStatusHtml(status);
-                    statusDiv.innerHTML = statusHtml;
+                if (status) {
+                    // Update status badge
+                    const statusCell = document.getElementById(`peerStatus_${peerData.ip}`);
+                    if (statusCell) {
+                        const statusBadge = status.latency !== null && status.latency >= 0 ?
+                            '<span style="background-color: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.85em;">Online</span>' :
+                            '<span style="background-color: #f44336; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.85em;">Offline</span>';
+                        statusCell.innerHTML = statusBadge;
+                    }
+                    
+                    // Update config last modified
+                    const configCell = document.getElementById(`peerConfigModified_${peerData.ip}`);
+                    if (configCell) {
+                        configCell.innerHTML = status.configStatus && status.configStatus.timestamp ? 
+                            status.configStatus.timestamp : '<span style="color: #666;">N/A</span>';
+                    }
+                    
+                    // Update latency
+                    const latencyCell = document.getElementById(`peerLatency_${peerData.ip}`);
+                    if (latencyCell) {
+                        latencyCell.innerHTML = status.latency !== null ? 
+                            `${status.latency}ms` : '<span style="color: #666;">N/A</span>';
+                    }
                 }
             });
-        });
-        
-        // Display all peers with editable fields
-        peerMap.forEach((peerData, peerAddress) => {
-            const div = document.createElement('div');
-            div.id = `peerNode_${peerData.ip}`;
-            div.style.cssText = 'border: 1px solid #ddd; padding: 15px; border-radius: 4px; margin-bottom: 10px;';
-            div.innerHTML = `
-                <div style="margin-bottom: 10px;">
-                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Peer Address (IP:Port):</label>
-                    <input type="text" id="peerAddress_${peerData.ip}" value="${peerAddress}" data-original="${peerAddress}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                </div>
-                <div style="margin-bottom: 10px;">
-                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Peer Name:</label>
-                    <input type="text" id="peerName_${peerData.ip}" value="${peerData.name}" data-original="${peerData.name}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                </div>
-                <div style="margin-bottom: 10px;">
-                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Public Key:</label>
-                    <input type="text" id="peerPublicKey_${peerData.ip}" value="${peerData.public_key}" data-original="${peerData.public_key}" placeholder="Enter public key (32 bytes Base64)" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 0.85em;">
-                </div>
-                <div id="peerStatus_${peerData.ip}" style="margin-bottom: 10px; padding: 10px; background-color: #f5f5f5; border-radius: 4px;">
-                    <div style="color: #666; font-size: 0.9em;">Loading status...</div>
-                </div>
-                <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                    <button class="btn btn-primary" onclick="savePeerNode('${peerData.ip}')">Save</button>
-                    <button class="btn btn-secondary" onclick="removePeerNode('${peerData.ip}')">Remove</button>
-                </div>
-            `;
-            peerNodesList.appendChild(div);
         });
         
         // Load public keys
@@ -3760,27 +3788,7 @@ async function loadPeerSyncPublicKeys() {
             }, 100);
         }
         
-        // Load own config status (Last Modified timestamp)
-        try {
-            const statusResponse = await fetch('/api/v1/peer-sync/own-config-status');
-            if (statusResponse.ok) {
-                const ownStatus = await statusResponse.json();
-                const ownStatusDiv = document.getElementById('ownPeerStatus');
-                if (ownStatusDiv) {
-                    if (ownStatus.timestamp) {
-                        ownStatusDiv.innerHTML = `<div style="margin-top: 5px;"><strong>Local Last Modified:</strong> ${ownStatus.timestamp}</div>`;
-                    } else {
-                        ownStatusDiv.innerHTML = ''; // Don't show anything if no timestamp
-                    }
-                }
-            }
-        } catch (e) {
-            console.warn('Failed to load own config status:', e);
-            const ownStatusDiv = document.getElementById('ownPeerStatus');
-            if (ownStatusDiv) {
-                ownStatusDiv.innerHTML = ''; // Don't show anything if error or no timestamp
-            }
-        }
+        // Own config status is now displayed in the Peer-Status table, no need to load separately
     } catch (error) {
         console.error('Error loading public key:', error);
     }
@@ -3913,38 +3921,43 @@ async function addPeerNode() {
     }
     
     const peerIp = peerAddress.split(':')[0];
-    const peerNodesList = document.getElementById('peerNodesList');
+    const tbody = document.getElementById('peerNodesTableBody');
     
     // Check if peer already exists
-    const existingPeer = document.getElementById(`peerNode_${peerIp}`);
+    const existingPeer = document.getElementById(`peerNodeRow_${peerIp}`);
     if (existingPeer) {
         showToast('Peer node already exists', 'error');
         return;
     }
     
-    // Add new peer directly to UI with empty fields
-    const div = document.createElement('div');
-    div.id = `peerNode_${peerIp}`;
-    div.style.cssText = 'border: 1px solid #ddd; padding: 15px; border-radius: 4px; margin-bottom: 10px;';
-    div.innerHTML = `
-        <div style="margin-bottom: 10px;">
-            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Peer Address (IP:Port):</label>
-            <input type="text" id="peerAddress_${peerIp}" value="${peerAddress}" data-original="${peerAddress}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-        </div>
-        <div style="margin-bottom: 10px;">
-            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Peer Name:</label>
-            <input type="text" id="peerName_${peerIp}" value="${peerIp}" data-original="${peerIp}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-        </div>
-        <div style="margin-bottom: 10px;">
-            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Public Key:</label>
-            <input type="text" id="peerPublicKey_${peerIp}" value="" data-original="" placeholder="Enter public key (32 bytes Base64)" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 0.85em;">
-        </div>
-        <div style="display: flex; gap: 10px; justify-content: flex-end;">
-            <button class="btn btn-primary" onclick="savePeerNode('${peerIp}')">Save</button>
-            <button class="btn btn-secondary" onclick="removePeerNode('${peerIp}')">Remove</button>
-        </div>
+    // Add new peer directly to UI table with empty fields
+    const row = document.createElement('tr');
+    row.id = `peerNodeRow_${peerIp}`;
+    row.innerHTML = `
+        <td style="padding: 10px; border: 1px solid #ddd;">
+            <input type="text" id="peerAddress_${peerIp}" value="${peerAddress}" data-original="${peerAddress}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em;">
+        </td>
+        <td style="padding: 10px; border: 1px solid #ddd;">
+            <input type="text" id="peerName_${peerIp}" value="${peerIp}" data-original="${peerIp}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em;">
+        </td>
+        <td style="padding: 10px; border: 1px solid #ddd;">
+            <input type="text" id="peerPublicKey_${peerIp}" value="" data-original="" placeholder="32 bytes Base64" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 0.8em;">
+        </td>
+        <td style="padding: 10px; border: 1px solid #ddd;" id="peerStatus_${peerIp}">
+            <span style="background-color: #999; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.85em;">-</span>
+        </td>
+        <td style="padding: 10px; border: 1px solid #ddd;" id="peerConfigModified_${peerIp}">
+            <span style="color: #666;">-</span>
+        </td>
+        <td style="padding: 10px; border: 1px solid #ddd;" id="peerLatency_${peerIp}">
+            <span style="color: #666;">-</span>
+        </td>
+        <td style="padding: 10px; border: 1px solid #ddd;">
+            <button class="btn btn-primary" onclick="savePeerNode('${peerIp}')" style="padding: 4px 8px; font-size: 0.85em; margin-right: 5px;">Save</button>
+            <button class="btn btn-secondary" onclick="removePeerNode('${peerIp}')" style="padding: 4px 8px; font-size: 0.85em;">Remove</button>
+        </td>
     `;
-    peerNodesList.appendChild(div);
+    tbody.appendChild(row);
     input.value = '';
     showToast('Peer node added. Please fill in the details and click Save.', 'info');
 }
@@ -4035,17 +4048,30 @@ async function savePeerNode(peerIp) {
         nameInput.setAttribute('data-original', peerName);
         keyInput.setAttribute('data-original', peerPublicKey);
         
-        // Update div ID if IP changed
+        // Update row ID if IP changed
         if (originalIp !== newPeerIp) {
-            const div = document.getElementById(`peerNode_${originalIp}`);
-            if (div) {
-                div.id = `peerNode_${newPeerIp}`;
+            const row = document.getElementById(`peerNodeRow_${originalIp}`);
+            if (row) {
+                row.id = `peerNodeRow_${newPeerIp}`;
                 addressInput.id = `peerAddress_${newPeerIp}`;
                 nameInput.id = `peerName_${newPeerIp}`;
                 keyInput.id = `peerPublicKey_${newPeerIp}`;
+                // Update status cell IDs
+                const statusCell = document.getElementById(`peerStatus_${originalIp}`);
+                if (statusCell) {
+                    statusCell.id = `peerStatus_${newPeerIp}`;
+                }
+                const configCell = document.getElementById(`peerConfigModified_${originalIp}`);
+                if (configCell) {
+                    configCell.id = `peerConfigModified_${newPeerIp}`;
+                }
+                const latencyCell = document.getElementById(`peerLatency_${originalIp}`);
+                if (latencyCell) {
+                    latencyCell.id = `peerLatency_${newPeerIp}`;
+                }
                 // Update onclick handlers
-                const saveBtn = div.querySelector('button.btn-primary');
-                const removeBtn = div.querySelector('button.btn-secondary');
+                const saveBtn = row.querySelector('button.btn-primary');
+                const removeBtn = row.querySelector('button.btn-secondary');
                 if (saveBtn) saveBtn.setAttribute('onclick', `savePeerNode('${newPeerIp}')`);
                 if (removeBtn) removeBtn.setAttribute('onclick', `removePeerNode('${newPeerIp}')`);
             }
@@ -4183,7 +4209,7 @@ async function loadPeerSyncStatus() {
                     <td style="padding: 10px; border: 1px solid #ddd;"><strong>Local Host</strong> <span style="color: #2196F3; font-size: 0.85em;">(This Server)</span></td>
                     <td style="padding: 10px; border: 1px solid #ddd;">-</td>
                     <td style="padding: 10px; border: 1px solid #ddd;"><span style="background-color: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px;">Online</span></td>
-                    <td style="padding: 10px; border: 1px solid #ddd;">${ownStatus.timestamp || 'N/A'}</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>Local:</strong> ${ownStatus.timestamp || 'N/A'}</td>
                     <td style="padding: 10px; border: 1px solid #ddd;">-</td>
                     <td style="padding: 10px; border: 1px solid #ddd;">-</td>
                     <td style="padding: 10px; border: 1px solid #ddd;">-</td>
@@ -4227,7 +4253,7 @@ async function loadPeerSyncStatus() {
                 <td style="padding: 10px; border: 1px solid #ddd;">${peer.peer_name}</td>
                 <td style="padding: 10px; border: 1px solid #ddd;">${peer.peer_ip}</td>
                 <td style="padding: 10px; border: 1px solid #ddd;">${statusBadge}</td>
-                <td style="padding: 10px; border: 1px solid #ddd;">${lastModified}</td>
+                <td style="padding: 10px; border: 1px solid #ddd;"><strong>Peer:</strong> ${lastModified}</td>
                 <td style="padding: 10px; border: 1px solid #ddd;">${peer.last_sync ? new Date(peer.last_sync).toLocaleString() : 'Never'}</td>
                 <td style="padding: 10px; border: 1px solid #ddd;">${peer.success_rate}%</td>
                 <td style="padding: 10px; border: 1px solid #ddd;">
@@ -4515,17 +4541,24 @@ function calculateConfigAge(timestampStr) {
 
 // Build peer status HTML
 function buildPeerStatusHtml(status) {
-    // Only show timestamp (modification date) - this is what changes when config is updated
-    const timestampHtml = status.configStatus && status.configStatus.timestamp ? 
-        `<div style="margin-top: 5px;"><strong>Peer Last Modified:</strong> ${status.configStatus.timestamp}</div>` :
-        '<div style="margin-top: 5px;"><strong>Peer Last Modified:</strong> <span style="color: #666;">N/A</span></div>';
+    // Status badge (Online/Offline)
+    const statusBadge = status.latency !== null && status.latency >= 0 ?
+        '<span style="background-color: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.85em;">Online</span>' :
+        '<span style="background-color: #f44336; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.85em;">Offline</span>';
     
+    // Config Last Modified timestamp
+    const timestampHtml = status.configStatus && status.configStatus.timestamp ? 
+        `<div style="margin-top: 5px;"><strong>Config Last Modified:</strong> ${status.configStatus.timestamp}</div>` :
+        '<div style="margin-top: 5px;"><strong>Config Last Modified:</strong> <span style="color: #666;">N/A</span></div>';
+    
+    // Latency
     const latencyHtml = status.latency !== null ? 
         `<div style="margin-top: 5px;"><strong>Latency:</strong> ${status.latency}ms</div>` :
         '<div style="margin-top: 5px;"><strong>Latency:</strong> <span style="color: #666;">N/A</span></div>';
     
     return `
         <div style="margin-bottom: 10px;">
+            <div style="margin-bottom: 8px;"><strong>Status:</strong> ${statusBadge}</div>
             ${timestampHtml}
             ${latencyHtml}
         </div>
