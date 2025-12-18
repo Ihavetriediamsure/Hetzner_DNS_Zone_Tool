@@ -3691,7 +3691,6 @@ async function loadPeerSyncConfig() {
             // Initial status (will be updated when status data arrives)
             const statusBadge = '<span style="background-color: #999; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.85em;">Loading...</span>';
             const configLastModified = '<span style="color: #666;">Loading...</span>';
-            const latency = '<span style="color: #666;">Loading...</span>';
             
             row.innerHTML = `
                 <td style="padding: 10px; border: 1px solid #ddd;">
@@ -3708,9 +3707,6 @@ async function loadPeerSyncConfig() {
                 </td>
                 <td style="padding: 10px; border: 1px solid #ddd;" id="peerConfigModified_${peerData.ip}">
                     ${configLastModified}
-                </td>
-                <td style="padding: 10px; border: 1px solid #ddd;" id="peerLatency_${peerData.ip}">
-                    ${latency}
                 </td>
                 <td style="padding: 10px; border: 1px solid #ddd;">
                     <button class="btn btn-primary" onclick="savePeerNode('${peerData.ip}')" style="padding: 4px 8px; font-size: 0.85em; margin-right: 5px;">Save</button>
@@ -3747,12 +3743,7 @@ async function loadPeerSyncConfig() {
                             status.configStatus.timestamp : '<span style="color: #666;">N/A</span>';
                     }
                     
-                    // Update latency
-                    const latencyCell = document.getElementById(`peerLatency_${peerData.ip}`);
-                    if (latencyCell) {
-                        latencyCell.innerHTML = status.latency !== null ? 
-                            `${status.latency}ms` : '<span style="color: #666;">N/A</span>';
-                    }
+                    // Latency column removed - no longer displayed
                 }
             });
         });
@@ -3787,7 +3778,23 @@ async function loadPeerSyncPublicKeys() {
             }, 100);
         }
         
-        // Own config status is now displayed in the Peer-Status table, no need to load separately
+        // Load own config status for display in Peer Nodes & Keys section
+        try {
+            const statusResponse = await fetch('/api/v1/peer-sync/own-config-status');
+            if (statusResponse.ok) {
+                const ownStatus = await statusResponse.json();
+                const localConfigDiv = document.getElementById('localConfigLastModified');
+                if (localConfigDiv) {
+                    localConfigDiv.textContent = ownStatus.timestamp || 'N/A';
+                }
+            }
+        } catch (e) {
+            console.warn('Failed to load own config status:', e);
+            const localConfigDiv = document.getElementById('localConfigLastModified');
+            if (localConfigDiv) {
+                localConfigDiv.textContent = 'N/A';
+            }
+        }
     } catch (error) {
         console.error('Error loading public key:', error);
     }
@@ -3947,9 +3954,6 @@ async function addPeerNode() {
         <td style="padding: 10px; border: 1px solid #ddd;" id="peerConfigModified_${peerIp}">
             <span style="color: #666;">-</span>
         </td>
-        <td style="padding: 10px; border: 1px solid #ddd;" id="peerLatency_${peerIp}">
-            <span style="color: #666;">-</span>
-        </td>
         <td style="padding: 10px; border: 1px solid #ddd;">
             <button class="btn btn-primary" onclick="savePeerNode('${peerIp}')" style="padding: 4px 8px; font-size: 0.85em; margin-right: 5px;">Save</button>
             <button class="btn btn-secondary" onclick="removePeerNode('${peerIp}')" style="padding: 4px 8px; font-size: 0.85em;">Remove</button>
@@ -4063,10 +4067,7 @@ async function savePeerNode(peerIp) {
                 if (configCell) {
                     configCell.id = `peerConfigModified_${newPeerIp}`;
                 }
-                const latencyCell = document.getElementById(`peerLatency_${originalIp}`);
-                if (latencyCell) {
-                    latencyCell.id = `peerLatency_${newPeerIp}`;
-                }
+                // Latency column removed - no longer needed
                 // Update onclick handlers
                 const saveBtn = row.querySelector('button.btn-primary');
                 const removeBtn = row.querySelector('button.btn-secondary');
