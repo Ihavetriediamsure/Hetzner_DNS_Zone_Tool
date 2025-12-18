@@ -3303,11 +3303,16 @@ async def receive_sync_peer_sync_ntp(request: Request):
         if not peer_x25519_pub:
             raise HTTPException(status_code=400, detail="Missing peer public key")
         
-        # Verify signature
-        sig_data = f"{encrypted_data}:{nonce}".encode()
-        peer_sync = get_peer_sync()
-        if not peer_sync._verify_signature(sig_data, response_signature, peer_x25519_pub):
-            raise HTTPException(status_code=403, detail="Invalid signature")
+        # Verify signature of POST request (same as local-ips endpoint)
+        try:
+            from src.peer_auth import verify_peer_signature_for_body
+            if not await verify_peer_signature_for_body(request, body, peer_x25519_pub, response_signature):
+                raise HTTPException(status_code=403, detail="Invalid signature for POST request")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning(f"Signature verification failed for POST request: {e}")
+            raise HTTPException(status_code=403, detail="Invalid signature for POST request")
         
         # Decrypt config
         remote_data = peer_sync._decrypt_config(encrypted_data, nonce, peer_x25519_pub)
