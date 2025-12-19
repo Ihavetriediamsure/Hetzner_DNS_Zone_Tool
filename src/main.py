@@ -237,15 +237,18 @@ app.add_middleware(
 # CSRF Protection - Simple implementation using session
 def get_csrf_token(request: Request) -> str:
     """Generate or retrieve CSRF token from session"""
-    # Check if session is available in scope
+    # Ensure session is initialized (security_middleware should have done this, but be defensive)
     if "session" not in request.scope:
-        # Session not available yet - return empty string
-        return ""
+        request.scope["session"] = {}
     
-    if "csrf_token" not in request.session:
-        import secrets
-        request.session["csrf_token"] = secrets.token_urlsafe(32)
-    return request.session["csrf_token"]
+    try:
+        if "csrf_token" not in request.session:
+            import secrets
+            request.session["csrf_token"] = secrets.token_urlsafe(32)
+        return request.session["csrf_token"]
+    except (AttributeError, AssertionError, KeyError):
+        # Session access failed - return empty string
+        return ""
 
 def validate_csrf_token(request: Request) -> bool:
     """Validate CSRF token from request"""
@@ -260,17 +263,11 @@ def validate_csrf_token(request: Request) -> bool:
         # No token in header - fail
         return False
     
-    # Try to access session - this will create it if it doesn't exist (SessionMiddleware behavior)
-    # But we need to handle the case where session is not in scope yet
+    # Ensure session is initialized (security_middleware should have done this, but be defensive)
+    if "session" not in request.scope:
+        request.scope["session"] = {}
+    
     try:
-        # Check if session is in scope first
-        if "session" not in request.scope:
-            # Session not initialized - this means SessionMiddleware hasn't processed the request yet
-            # or no session cookie exists. For API requests without session, we can't validate CSRF.
-            # This should not happen if SessionMiddleware runs before security_middleware,
-            # but we'll fail securely.
-            return False
-        
         # Now safe to access request.session
         token_from_session = request.session.get("csrf_token")
         
@@ -290,15 +287,22 @@ def validate_csrf_token(request: Request) -> bool:
 @app.middleware("http")
 async def security_middleware(request: Request, call_next):
     """Add security headers and validate CSRF tokens"""
+    # Initialize session in scope if not present (SessionMiddleware behavior)
+    # Accessing request.session will trigger SessionMiddleware to create the session
+    # But we need to ensure it's in scope first
+    if "session" not in request.scope:
+        # Initialize empty session dict - SessionMiddleware will handle cookie creation
+        request.scope["session"] = {}
+    
     # Ensure CSRF token exists in session for all requests (not just state-changing ones)
     # This ensures the token is available when needed
     try:
-        if "session" in request.scope:
-            # Session is in scope, ensure CSRF token exists
-            if "csrf_token" not in request.session:
-                # Generate CSRF token if it doesn't exist
-                import secrets
-                request.session["csrf_token"] = secrets.token_urlsafe(32)
+        # Access request.session to ensure SessionMiddleware processes it
+        # This will create the session if it doesn't exist
+        if "csrf_token" not in request.session:
+            # Generate CSRF token if it doesn't exist
+            import secrets
+            request.session["csrf_token"] = secrets.token_urlsafe(32)
     except (AttributeError, AssertionError, KeyError):
         # Session not available - will fail in validate_csrf_token if needed
         pass
