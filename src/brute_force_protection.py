@@ -126,6 +126,16 @@ class BruteForceProtection:
         if not self._enabled:
             return True, None
         
+        # Check if IP is whitelisted - whitelisted IPs bypass brute-force protection
+        try:
+            from src.ip_whitelist import get_ip_access_control
+            ip_access = get_ip_access_control()
+            if ip_access.is_whitelist_enabled() and ip_access.is_ip_allowed(ip):
+                return True, None  # Whitelisted IP, bypass brute-force protection
+        except Exception:
+            # If IP whitelist check fails, continue with brute-force protection
+            pass
+        
         with self._lock:
             identifier = self._get_identifier(ip, username)
             attempts = self._login_attempts[identifier]
@@ -174,6 +184,16 @@ class BruteForceProtection:
         """
         if not self._enabled:
             return True, None
+        
+        # Check if IP is whitelisted - whitelisted IPs bypass brute-force protection
+        try:
+            from src.ip_whitelist import get_ip_access_control
+            ip_access = get_ip_access_control()
+            if ip_access.is_whitelist_enabled() and ip_access.is_ip_allowed(ip):
+                return True, None  # Whitelisted IP, bypass brute-force protection
+        except Exception:
+            # If IP whitelist check fails, continue with brute-force protection
+            pass
         
         with self._lock:
             identifier = self._get_identifier(ip, username)
@@ -241,6 +261,16 @@ class BruteForceProtection:
         """
         if not self._enabled:
             return True, None
+        
+        # Check if IP is whitelisted - whitelisted IPs bypass brute-force protection
+        try:
+            from src.ip_whitelist import get_ip_access_control
+            ip_access = get_ip_access_control()
+            if ip_access.is_whitelist_enabled() and ip_access.is_ip_allowed(ip):
+                return True, None  # Whitelisted IP, bypass brute-force protection
+        except Exception:
+            # If IP whitelist check fails, continue with brute-force protection
+            pass
         
         with self._lock:
             identifier = self._get_identifier(ip, username)
