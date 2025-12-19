@@ -31,6 +31,10 @@ from fastapi import FastAPI, Request, HTTPException, Depends, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
+from itsdangerous import URLSafeTimedSerializer
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from contextlib import asynccontextmanager
 from datetime import datetime
 from src.models import HealthResponse, LoginRequest, LoginResponse, ChangePasswordRequest, TwoFactorSetupRequest, TwoFactorVerifyRequest, SecurityConfigResponse, IPAccessControlResponse, TwoFactorStatus, IPWhitelistEntry, BruteForceConfigResponse, BruteForceConfigRequest, SMTPConfigResponse, SMTPConfigRequest, SetupRequest, SetupResponse, AuditLogConfigResponse, AuditLogConfigRequest, PeerSyncConfigResponse, PeerSyncConfigRequest, PeerSyncPublicKeysResponse, PeerSyncStatusResponse, PeerSyncSyncNowRequest, PeerSyncTestConnectionRequest
@@ -199,11 +203,100 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Hetzner DNS Zone Tool", version="1.0.0", lifespan=lifespan)
 
+# Rate Limiter - Global rate limiting for API endpoints
+# Use secure IP extraction for rate limiting
+def get_client_ip_for_rate_limit(request: Request) -> str:
+    """Get client IP for rate limiting using secure extraction"""
+    from src.ip_utils import get_client_ip_safe
+    return get_client_ip_safe(request)
+
+limiter = Limiter(key_func=get_client_ip_for_rate_limit)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # Session middleware - Load secret from config file (for Docker) or environment variable
 config_manager = get_config_manager()
 session_secret = config_manager.get_session_secret()
-app.add_middleware(SessionMiddleware, secret_key=session_secret)
 
+# Get session timeout from config (default: 1 hour = 3600 seconds)
+config = config_manager.load_config()
+security_config = config.get('security', {})
+session_timeout = security_config.get('session_timeout_seconds', 3600)  # Default: 1 hour
+
+# IMPORTANT: In FastAPI, app.add_middleware() executes BEFORE @app.middleware("http") decorators
+# So SessionMiddleware (via add_middleware) will run BEFORE security_middleware (via @app.middleware)
+# This ensures request.session is available when security_middleware executes
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=session_secret,
+    max_age=session_timeout,
+    same_site="lax",
+    https_only=False  # Set to True if always behind SSL proxy
+)
+
+# CSRF Protection - Simple implementation using session
+def get_csrf_token(request: Request) -> str:
+    """Generate or retrieve CSRF token from session"""
+    if "csrf_token" not in request.session:
+        import secrets
+        request.session["csrf_token"] = secrets.token_urlsafe(32)
+    return request.session["csrf_token"]
+
+def validate_csrf_token(request: Request) -> bool:
+    """Validate CSRF token from request"""
+    # Skip CSRF check for GET, HEAD, OPTIONS
+    if request.method in ["GET", "HEAD", "OPTIONS"]:
+        return True
+    
+    # Defensive check: Ensure session is available (should always be true after SessionMiddleware)
+    if not hasattr(request, "session") or request.session is None:
+        # Session not available - this should not happen, but fail securely
+        return False
+    
+    # Get token from header
+    token_from_request = request.headers.get("X-CSRFToken") or request.headers.get("X-CSRF-Token")
+    
+    # Get token from session
+    token_from_session = request.session.get("csrf_token")
+    
+    if not token_from_session or not token_from_request:
+        return False
+    
+    return token_from_request == token_from_session
+
+# Security Headers and CSRF Validation Middleware
+# Note: SessionMiddleware (via app.add_middleware) runs BEFORE this middleware,
+# so request.session is guaranteed to be available when CSRF validation executes
+@app.middleware("http")
+async def security_middleware(request: Request, call_next):
+    """Add security headers and validate CSRF tokens"""
+    # Skip CSRF validation for certain endpoints
+    skip_csrf_paths = ["/health", "/login", "/setup", "/favicon.ico", "/static/"]
+    skip_csrf_api_paths = ["/api/v1/setup", "/api/v1/auth/login", "/api/v1/auth/logout"]
+    skip_csrf = (any(request.url.path.startswith(path) for path in skip_csrf_paths) or 
+                 any(request.url.path == path for path in skip_csrf_api_paths))
+    
+    # Validate CSRF token for state-changing requests
+    if not skip_csrf and request.method in ["POST", "PUT", "DELETE", "PATCH"]:
+        if not validate_csrf_token(request):
+            return JSONResponse(
+                status_code=403,
+                content={"error": "CSRF token validation failed", "message": "Invalid or missing CSRF token"}
+            )
+    
+    response = await call_next(request)
+    
+    # Add security headers
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    
+    # Remove Server header (information disclosure)
+    if "server" in response.headers:
+        del response.headers["server"]
+    
+    return response
 
 # IP Access Control Middleware
 @app.middleware("http")
@@ -258,7 +351,7 @@ if os.path.exists(static_path):
 
 
 @app.get("/", response_class=HTMLResponse)
-async def root():
+async def root(request: Request):
     """Serve main page or setup page if setup is required"""
     # Check if setup is required
     auth_manager = get_auth_manager()
@@ -267,13 +360,23 @@ async def root():
         setup_path = os.path.join(os.path.dirname(__file__), "static", "setup.html")
         if os.path.exists(setup_path):
             with open(setup_path, 'r', encoding='utf-8') as f:
-                return f.read()
+                content = f.read()
+                # Inject CSRF token into HTML
+                csrf_token = get_csrf_token(request)
+                if csrf_token:
+                    content = content.replace('</head>', f'<meta name="csrf-token" content="{csrf_token}"></head>')
+                return content
         return "<h1>Initial Setup Required</h1><p>Please configure the application first.</p>"
     
     index_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
     if os.path.exists(index_path):
         with open(index_path, 'r', encoding='utf-8') as f:
-            return f.read()
+            content = f.read()
+            # Inject CSRF token into HTML
+            csrf_token = get_csrf_token(request)
+            if csrf_token:
+                content = content.replace('</head>', f'<meta name="csrf-token" content="{csrf_token}"></head>')
+            return content
     return "<h1>Hetzner DNS Zone Tool</h1><p>Web-GUI is loading...</p>"
 
 
@@ -284,7 +387,7 @@ async def favicon():
     return Response(status_code=204)
 
 @app.get("/login", response_class=HTMLResponse)
-async def login_page():
+async def login_page(request: Request):
     """Serve login page or setup page if setup is required"""
     # Check if setup is required
     auth_manager = get_auth_manager()
@@ -293,23 +396,38 @@ async def login_page():
         setup_path = os.path.join(os.path.dirname(__file__), "static", "setup.html")
         if os.path.exists(setup_path):
             with open(setup_path, 'r', encoding='utf-8') as f:
-                return f.read()
+                content = f.read()
+                # Inject CSRF token into HTML
+                csrf_token = get_csrf_token(request)
+                if csrf_token:
+                    content = content.replace('</head>', f'<meta name="csrf-token" content="{csrf_token}"></head>')
+                return content
         return "<h1>Initial Setup Required</h1><p>Please configure the application first.</p>"
     
     login_path = os.path.join(os.path.dirname(__file__), "static", "login.html")
     if os.path.exists(login_path):
         with open(login_path, 'r', encoding='utf-8') as f:
-            return f.read()
+            content = f.read()
+            # Inject CSRF token into HTML
+            csrf_token = get_csrf_token(request)
+            if csrf_token:
+                content = content.replace('</head>', f'<meta name="csrf-token" content="{csrf_token}"></head>')
+            return content
     return "<h1>Login</h1><p>Login page is loading...</p>"
 
 
 @app.get("/setup", response_class=HTMLResponse)
-async def setup_page():
+async def setup_page(request: Request):
     """Serve setup page"""
     setup_path = os.path.join(os.path.dirname(__file__), "static", "setup.html")
     if os.path.exists(setup_path):
         with open(setup_path, 'r', encoding='utf-8') as f:
-            return f.read()
+            content = f.read()
+            # Inject CSRF token into HTML
+            csrf_token = get_csrf_token(request)
+            if csrf_token:
+                content = content.replace('</head>', f'<meta name="csrf-token" content="{csrf_token}"></head>')
+            return content
     return "<h1>Initial Setup</h1><p>Setup page is loading...</p>"
 
 
@@ -405,6 +523,7 @@ async def get_api_tokens(request: Request):
 
 
 @app.post("/api/v1/config/api-tokens")
+@limiter.limit("20/minute")
 async def set_api_tokens(request: Request):
     """Add a new API token or set old/new tokens (backward compatibility)"""
     if not request.session.get("authenticated", False):
@@ -547,6 +666,7 @@ async def test_api_tokens(request: Request):
 
 
 @app.post("/api/v1/auth/login", response_model=LoginResponse)
+@limiter.limit("10/minute")
 async def login(request: Request, login_data: LoginRequest):
     """Login endpoint"""
     auth_manager = get_auth_manager()
@@ -825,38 +945,39 @@ class CreateZoneRequest(BaseModel):
 
 
 @app.post("/api/v1/zones")
-async def create_zone(request: CreateZoneRequest, http_request: Request = None, token_id: Optional[str] = None):
+@limiter.limit("30/minute")
+async def create_zone(zone_data: CreateZoneRequest, request: Request, token_id: Optional[str] = None):
     """Create a new DNS zone"""
     try:
         # Validate zone name
-        if not request.name or not request.name.strip():
+        if not zone_data.name or not zone_data.name.strip():
             raise HTTPException(status_code=400, detail="Zone name cannot be empty.")
         
         # Basic domain name validation
         import re
         domain_pattern = r'^([a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$'
-        if not re.match(domain_pattern, request.name.lower()):
+        if not re.match(domain_pattern, zone_data.name.lower()):
             raise HTTPException(status_code=400, detail="Invalid zone name. Must be a valid domain name (e.g. example.com).")
         
         # Validate token_id is provided
         if not token_id:
             raise HTTPException(status_code=400, detail="API token must be selected. Please select a token when creating a zone.")
         
-        username = http_request.session.get("username", "unknown") if hasattr(http_request, 'session') else "unknown"
+        username = request.session.get("username", "unknown") if hasattr(request, 'session') else "unknown"
         audit_log = get_audit_log()
         
         client = HetznerDNSClient(token_id=token_id)
         try:
             # Create zone
             new_zone = await client.create_zone(
-                name=request.name.strip().lower(),
-                ttl=request.ttl
+                name=zone_data.name.strip().lower(),
+                ttl=zone_data.ttl
             )
             
             audit_log.log(
                 action=AuditAction.ZONE_CREATE,
                 username=username,
-                request=http_request,
+                request=request,
                 success=True,
                 details={"zone_id": new_zone.id, "zone_name": new_zone.name, "token_id": token_id}
             )
@@ -871,20 +992,21 @@ async def create_zone(request: CreateZoneRequest, http_request: Request = None, 
             raise HTTPException(status_code=400, detail="New API token not configured.")
         raise HTTPException(status_code=500, detail=f"Error creating zone: {str(e)}")
     except Exception as e:
-        username = http_request.session.get("username", "unknown") if hasattr(http_request, 'session') else "unknown"
+        username = request.session.get("username", "unknown") if hasattr(request, 'session') else "unknown"
         audit_log = get_audit_log()
         audit_log.log(
             action=AuditAction.ZONE_CREATE,
             username=username,
-            request=http_request,
+            request=request,
             success=False,
             error=str(e),
-            details={"zone_name": request.name if request.name else "unknown"}
+            details={"zone_name": zone_data.name if zone_data.name else "unknown"}
         )
         raise HTTPException(status_code=500, detail=f"Error creating zone: {str(e)}")
 
 
 @app.delete("/api/v1/zones/{zone_id}")
+@limiter.limit("30/minute")
 async def delete_zone(zone_id: str, request: Request, token_id: Optional[str] = None):
     """Delete a DNS zone"""
     try:

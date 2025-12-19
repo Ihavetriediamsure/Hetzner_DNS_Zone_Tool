@@ -430,6 +430,7 @@ class ConfigManager:
                 'password': ''
             },
             'security': {
+                'session_timeout_seconds': 3600,  # Session timeout in seconds (default: 1 hour)
                 'ip_whitelist': {
                     'enabled': False,
                     'allowed_ips': []

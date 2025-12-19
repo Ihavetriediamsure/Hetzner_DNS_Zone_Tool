@@ -1,9 +1,32 @@
 // Main application JavaScript
 
+// CSRF Token Helper
+function getCsrfToken() {
+    const metaTag = document.querySelector('meta[name="csrf-token"]');
+    return metaTag ? metaTag.getAttribute('content') : '';
+}
+
+// Enhanced fetch function that automatically includes CSRF token
+async function secureFetch(url, options = {}) {
+    const csrfToken = getCsrfToken();
+    const method = (options.method || 'GET').toUpperCase();
+    
+    // Add CSRF token to POST, PUT, DELETE, PATCH requests
+    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method) && csrfToken) {
+        if (!options.headers) {
+            options.headers = {};
+        }
+        // Starlette CSRFMiddleware expects X-CSRFToken header
+        options.headers['X-CSRFToken'] = csrfToken;
+    }
+    
+    return fetch(url, options);
+}
+
 // Check auth status first, but don't block page loading
 async function initAuth() {
     try {
-        const response = await fetch('/api/v1/auth/status');
+        const response = await secureFetch('/api/v1/auth/status');
         if (!response.ok) {
             // If endpoint doesn't exist or returns error, redirect to login
             if (window.location.pathname !== '/login' && window.location.pathname !== '/setup') {
@@ -140,7 +163,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     if (logoutBtn) {
         logoutBtn.addEventListener('click', async function() {
             try {
-                await fetch('/api/v1/auth/logout', { method: 'POST' });
+                await secureFetch('/api/v1/auth/logout', { method: 'POST' });
                 window.location.href = '/login';
             } catch (error) {
                 console.error('Logout error:', error);
@@ -200,7 +223,7 @@ async function loadZones() {
     
     try {
         // First, get all tokens
-        const tokensResponse = await fetch('/api/v1/config/api-tokens');
+        const tokensResponse = await secureFetch('/api/v1/config/api-tokens');
         if (!tokensResponse.ok) {
             zonesListDiv.innerHTML = '<p class="error">Error loading tokens</p>';
             return;
@@ -226,7 +249,7 @@ async function loadZones() {
         
         for (const token of tokens) {
             try {
-                const response = await fetch(`/api/v1/zones?token_id=${encodeURIComponent(token.id)}`);
+                const response = await secureFetch(`/api/v1/zones?token_id=${encodeURIComponent(token.id)}`);
                 if (response.ok) {
                     const data = await response.json();
                     const zones = data.zones || [];
@@ -367,7 +390,7 @@ async function loadPublicIP() {
     if (!ipDisplay) return;
     
     try {
-        const response = await fetch('/api/v1/public-ip');
+        const response = await secureFetch('/api/v1/public-ip');
         if (response.ok) {
             const data = await response.json();
             
@@ -416,7 +439,7 @@ async function savePublicIPInterval() {
     }
     
     try {
-        const response = await fetch('/api/v1/public-ip/refresh-interval', {
+        const response = await secureFetch('/api/v1/public-ip/refresh-interval', {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({interval: interval})
@@ -470,7 +493,7 @@ async function loadZoneRRSets(zoneId, zoneName, tokenId = null) {
         if (tokenId) {
             url += `?token_id=${encodeURIComponent(tokenId)}`;
         }
-        const response = await fetch(url);
+        const response = await secureFetch(url);
         if (!response.ok) {
             rrsetsDiv.innerHTML = `<p class="error">Error loading entries: ${response.status}</p>`;
             return;
@@ -509,7 +532,7 @@ async function loadZoneRRSets(zoneId, zoneName, tokenId = null) {
         // Hole Server-IP für Vergleich
         let serverIP = null;
         try {
-            const ipResponse = await fetch('/api/v1/public-ip');
+            const ipResponse = await secureFetch('/api/v1/public-ip');
             if (ipResponse.ok) {
                 const ipData = await ipResponse.json();
                 serverIP = ipData.ip || null;
@@ -789,7 +812,7 @@ async function loadAutoUpdateInterval() {
     const intervalSelect = document.getElementById('autoUpdateInterval');
     
     try {
-        const response = await fetch('/api/v1/auto-update/interval');
+        const response = await secureFetch('/api/v1/auto-update/interval');
         if (response.ok) {
             const data = await response.json();
             const interval = data.interval || 600;
@@ -816,7 +839,7 @@ async function saveAutoUpdateInterval() {
     }
     
     try {
-        const response = await fetch('/api/v1/auto-update/interval', {
+        const response = await secureFetch('/api/v1/auto-update/interval', {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({interval: interval})
@@ -907,7 +930,7 @@ async function deleteRRSetSettings(zoneId, rrsetId) {
         if (tokenId) {
             url += `?token_id=${encodeURIComponent(tokenId)}`;
         }
-        const response = await fetch(url, {
+        const response = await secureFetch(url, {
             method: 'DELETE'
         });
         
@@ -952,7 +975,7 @@ async function assignServerIP(zoneId, rrsetId) {
         if (tokenId) {
             url += `?token_id=${encodeURIComponent(tokenId)}`;
         }
-        const response = await fetch(url, {
+        const response = await secureFetch(url, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'}
         });
@@ -1041,7 +1064,7 @@ async function saveLocalIPWithPort(zoneId, rrsetId, localIP = null, port = null)
             if (tokenId) {
                 url += `?token_id=${encodeURIComponent(tokenId)}`;
             }
-            const response = await fetch(url, {
+            const response = await secureFetch(url, {
                 method: 'DELETE'
             });
             
@@ -1082,7 +1105,7 @@ async function saveLocalIPWithPort(zoneId, rrsetId, localIP = null, port = null)
         if (tokenId) {
             url += `?token_id=${encodeURIComponent(tokenId)}`;
         }
-        const response = await fetch(url, {
+        const response = await secureFetch(url, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -1159,7 +1182,7 @@ async function checkIPStatus(zoneId, rrsetId) {
         if (tokenId) {
             url += `?token_id=${encodeURIComponent(tokenId)}`;
         }
-        const response = await fetch(url, {
+        const response = await secureFetch(url, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -1200,7 +1223,7 @@ async function checkIPStatus(zoneId, rrsetId) {
                     url += `?token_id=${encodeURIComponent(tokenId)}`;
                 }
                 // Send with previous_status parameter
-                fetch(url, {
+                secureFetch(url, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
@@ -1228,7 +1251,7 @@ async function toggleAutoUpdate(zoneId, rrsetId, enabled) {
         if (tokenId) {
             url += `?token_id=${encodeURIComponent(tokenId)}`;
         }
-        const response = await fetch(url, {
+        const response = await secureFetch(url, {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -1286,7 +1309,7 @@ async function saveTTL(zoneId, rrsetId, ttlValue) {
         if (tokenId) {
             url += `?token_id=${encodeURIComponent(tokenId)}`;
         }
-        const response = await fetch(url, {
+        const response = await secureFetch(url, {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -1331,7 +1354,7 @@ async function saveComment(zoneId, rrsetId, commentValue) {
         if (tokenId) {
             url += `?token_id=${encodeURIComponent(tokenId)}`;
         }
-        const response = await fetch(url, {
+        const response = await secureFetch(url, {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -1390,7 +1413,7 @@ async function savePublicIPForRecord(zoneId, rrsetId, ipValue) {
         if (tokenId) {
             url += `?token_id=${encodeURIComponent(tokenId)}`;
         }
-        const response = await fetch(url, {
+        const response = await secureFetch(url, {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -1430,7 +1453,7 @@ function viewZoneDetails(zoneId, zoneName) {
 
 async function loadApiTokens() {
     try {
-        const response = await fetch('/api/v1/config/api-tokens');
+        const response = await secureFetch('/api/v1/config/api-tokens');
         if (!response.ok) {
             console.error('Failed to load API tokens:', response.status, response.statusText);
             return;
@@ -1451,7 +1474,7 @@ async function loadApiTokens() {
 
 async function loadMachineName() {
     try {
-        const response = await fetch('/api/v1/config/machine-name');
+        const response = await secureFetch('/api/v1/config/machine-name');
         if (!response.ok) {
             console.error('Failed to load machine name:', response.status);
             return;
@@ -1480,7 +1503,7 @@ async function saveMachineName() {
     }
     
     try {
-        const response = await fetch('/api/v1/config/machine-name', {
+        const response = await secureFetch('/api/v1/config/machine-name', {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ machine_name: machineName })
@@ -1588,7 +1611,7 @@ async function deleteTokenById(tokenId) {
     }
     
     try {
-        const response = await fetch(`/api/v1/config/api-tokens/${tokenId}`, {
+        const response = await secureFetch(`/api/v1/config/api-tokens/${tokenId}`, {
             method: 'DELETE'
         });
         
@@ -1641,7 +1664,7 @@ async function addNewToken() {
             type: 'new'
         };
         
-        const response = await fetch('/api/v1/config/api-tokens', {
+        const response = await secureFetch('/api/v1/config/api-tokens', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -1714,7 +1737,7 @@ async function testApiTokens() {
             requestBody.new_token = newToken;
         }
         
-        const response = await fetch('/api/v1/config/test-api-tokens', {
+        const response = await secureFetch('/api/v1/config/test-api-tokens', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -1807,7 +1830,7 @@ async function showCreateRecordDialog(zoneId, zoneName, tokenId = null) {
     // Get public IP to pre-fill
     let publicIP = '';
     try {
-        const ipResponse = await fetch('/api/v1/public-ip');
+        const ipResponse = await secureFetch('/api/v1/public-ip');
         if (ipResponse.ok) {
             const ipData = await ipResponse.json();
             publicIP = ipData.ip || '';
@@ -1939,7 +1962,7 @@ async function createRecord(zoneId, zoneName, tokenId = null) {
         if (tokenId) {
             url += `?token_id=${encodeURIComponent(tokenId)}`;
         }
-        const response = await fetch(url, {
+        const response = await secureFetch(url, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -2146,7 +2169,7 @@ async function updateRecord(zoneId, rrsetId) {
         if (tokenId) {
             url += `?token_id=${encodeURIComponent(tokenId)}`;
         }
-        const response = await fetch(url, {
+        const response = await secureFetch(url, {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -2206,7 +2229,7 @@ async function showCreateZoneDialog() {
     // Load tokens first
     let tokens = [];
     try {
-        const tokensResponse = await fetch('/api/v1/config/api-tokens');
+        const tokensResponse = await secureFetch('/api/v1/config/api-tokens');
         if (tokensResponse.ok) {
             const tokensData = await tokensResponse.json();
             tokens = tokensData.tokens || [];
@@ -2320,7 +2343,7 @@ async function createZone() {
             url += `?token_id=${encodeURIComponent(tokenId)}`;
         }
         
-        const response = await fetch(url, {
+        const response = await secureFetch(url, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -2422,7 +2445,7 @@ async function deleteZone(zoneId, zoneName, tokenId = null) {
         if (tokenId) {
             url += `?token_id=${encodeURIComponent(tokenId)}`;
         }
-        const response = await fetch(url, {
+        const response = await secureFetch(url, {
             method: 'DELETE',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -2525,7 +2548,7 @@ async function deleteRecord(zoneId, rrsetId, confirmationText) {
         if (tokenId) {
             url += `?token_id=${encodeURIComponent(tokenId)}`;
         }
-        const response = await fetch(url, {
+        const response = await secureFetch(url, {
             method: 'DELETE',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -2586,7 +2609,7 @@ function showToast(message, type = 'info') {
 // Security Configuration Functions
 async function loadSecurityConfig() {
     try {
-        const response = await fetch('/api/v1/security/config');
+        const response = await secureFetch('/api/v1/security/config');
         if (!response.ok) {
             throw new Error('Failed to load security config');
         }
@@ -2666,7 +2689,7 @@ async function changePassword() {
     }
     
     try {
-        const response = await fetch('/api/v1/security/password/change', {
+        const response = await secureFetch('/api/v1/security/password/change', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -2705,7 +2728,7 @@ async function setup2FA() {
     }
     
     try {
-        const response = await fetch('/api/v1/security/2fa/setup', {
+        const response = await secureFetch('/api/v1/security/2fa/setup', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ password: password })
@@ -2745,7 +2768,7 @@ async function verify2FA() {
     }
     
     try {
-        const response = await fetch('/api/v1/security/2fa/verify', {
+        const response = await secureFetch('/api/v1/security/2fa/verify', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ token: token })
@@ -2781,7 +2804,7 @@ async function disable2FA() {
     }
     
     try {
-        const response = await fetch('/api/v1/security/2fa/disable', {
+        const response = await secureFetch('/api/v1/security/2fa/disable', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ password: password })
@@ -2812,7 +2835,7 @@ async function generateBackupCodes() {
     btn.textContent = 'Generating...';
     
     try {
-        const response = await fetch('/api/v1/security/2fa/backup-codes/generate', {
+        const response = await secureFetch('/api/v1/security/2fa/backup-codes/generate', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'}
         });
@@ -2898,7 +2921,7 @@ function showBackupCodesModal(backupCodes) {
 
 async function loadBackupCodesStatus() {
     try {
-        const response = await fetch('/api/v1/security/2fa/backup-codes/status');
+        const response = await secureFetch('/api/v1/security/2fa/backup-codes/status');
         if (!response.ok) {
             throw new Error('Failed to load backup codes status');
         }
@@ -2926,7 +2949,7 @@ async function loadBackupCodesStatus() {
 
 async function loadIPAccessControl() {
     try {
-        const response = await fetch('/api/v1/security/ip-access-control');
+        const response = await secureFetch('/api/v1/security/ip-access-control');
         if (!response.ok) {
             throw new Error('Failed to load IP access control');
         }
@@ -2975,7 +2998,7 @@ async function toggleWhitelist() {
     const enabled = document.getElementById('whitelistEnabled').checked;
     
     try {
-        const response = await fetch('/api/v1/security/ip-access-control/whitelist/enabled', {
+        const response = await secureFetch('/api/v1/security/ip-access-control/whitelist/enabled', {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(enabled)
@@ -2995,7 +3018,7 @@ async function toggleBlacklist() {
     const enabled = document.getElementById('blacklistEnabled').checked;
     
     try {
-        const response = await fetch('/api/v1/security/ip-access-control/blacklist/enabled', {
+        const response = await secureFetch('/api/v1/security/ip-access-control/blacklist/enabled', {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(enabled)
@@ -3021,7 +3044,7 @@ async function addWhitelistIp() {
     }
     
     try {
-        const response = await fetch('/api/v1/security/ip-access-control/whitelist/add', {
+        const response = await secureFetch('/api/v1/security/ip-access-control/whitelist/add', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ ip_or_cidr: ip })
@@ -3043,7 +3066,7 @@ async function addWhitelistIp() {
 
 async function removeWhitelistIp(ip) {
     try {
-        const response = await fetch(`/api/v1/security/ip-access-control/whitelist/${encodeURIComponent(ip)}`, {
+        const response = await secureFetch(`/api/v1/security/ip-access-control/whitelist/${encodeURIComponent(ip)}`, {
             method: 'DELETE'
         });
         
@@ -3068,7 +3091,7 @@ async function addBlacklistIp() {
     }
     
     try {
-        const response = await fetch('/api/v1/security/ip-access-control/blacklist/add', {
+        const response = await secureFetch('/api/v1/security/ip-access-control/blacklist/add', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ ip_or_cidr: ip })
@@ -3090,7 +3113,7 @@ async function addBlacklistIp() {
 
 async function removeBlacklistIp(ip) {
     try {
-        const response = await fetch(`/api/v1/security/ip-access-control/blacklist/${encodeURIComponent(ip)}`, {
+        const response = await secureFetch(`/api/v1/security/ip-access-control/blacklist/${encodeURIComponent(ip)}`, {
             method: 'DELETE'
         });
         
@@ -3136,7 +3159,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // Brute-Force Protection Functions
 async function loadBruteForceConfig() {
     try {
-        const response = await fetch('/api/v1/security/brute-force');
+        const response = await secureFetch('/api/v1/security/brute-force');
         if (!response.ok) {
             throw new Error('Failed to load brute-force config');
         }
@@ -3226,7 +3249,7 @@ async function saveBruteForceSettings() {
     }
     
     try {
-        const response = await fetch('/api/v1/security/brute-force', {
+        const response = await secureFetch('/api/v1/security/brute-force', {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(config)
@@ -3288,7 +3311,7 @@ async function loadAuditLogs() {
             params.append('end_date', endDate.toISOString());
         }
         
-        const response = await fetch(`/api/v1/security/audit-logs?${params.toString()}`);
+        const response = await secureFetch(`/api/v1/security/audit-logs?${params.toString()}`);
         if (!response.ok) {
             throw new Error('Failed to load audit logs');
         }
@@ -3379,7 +3402,7 @@ function clearAuditLogFilters() {
 // Audit Log Settings Functions
 async function loadAuditLogSettings() {
     try {
-        const response = await fetch('/api/v1/security/audit-log-config');
+        const response = await secureFetch('/api/v1/security/audit-log-config');
         if (!response.ok) {
             throw new Error('Failed to load audit log settings');
         }
@@ -3419,7 +3442,7 @@ async function saveAuditLogSettings() {
             throw new Error('Rotation interval must be between 1 and 168 hours');
         }
         
-        const response = await fetch('/api/v1/security/audit-log-config', {
+        const response = await secureFetch('/api/v1/security/audit-log-config', {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -3446,7 +3469,7 @@ async function saveAuditLogSettings() {
 
 async function loadSMTPConfig() {
     try {
-        const response = await fetch('/api/v1/security/smtp');
+        const response = await secureFetch('/api/v1/security/smtp');
         if (!response.ok) {
             throw new Error('Failed to load SMTP config');
         }
@@ -3544,7 +3567,7 @@ async function saveSMTPConfig() {
             enabled_events: enabledEvents
         };
         
-        const response = await fetch('/api/v1/security/smtp', {
+        const response = await secureFetch('/api/v1/security/smtp', {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(config)
@@ -3583,7 +3606,7 @@ async function saveSMTPConfig() {
 // Load Peer-Sync configuration
 async function loadPeerSyncConfig() {
     try {
-        const response = await fetch('/api/v1/peer-sync/config');
+        const response = await secureFetch('/api/v1/peer-sync/config');
         if (!response.ok) throw new Error('Failed to load peer-sync config');
         const config = await response.json();
         
@@ -3598,7 +3621,7 @@ async function loadPeerSyncConfig() {
         
         // Load NTP config from peer_sync_ntp.yaml (separate synchronized file)
         try {
-            const ntpResponse = await fetch('/api/v1/peer-sync/ntp-config');
+            const ntpResponse = await secureFetch('/api/v1/peer-sync/ntp-config');
             if (ntpResponse.ok) {
                 const ntpConfig = await ntpResponse.json();
                 const ntpServerInput = document.getElementById('peerSyncNtpServer');
@@ -3695,13 +3718,13 @@ async function loadPeerSyncConfig() {
             const peerIp = extractPeerIp(peerAddress);
             try {
                 // Get config status from peer (via our backend which handles signing)
-                const statusResponse = await fetch(`/api/v1/peer-sync/get-peer-config-status?peer=${encodeURIComponent(peerAddress)}`, {
+                const statusResponse = await secureFetch(`/api/v1/peer-sync/get-peer-config-status?peer=${encodeURIComponent(peerAddress)}`, {
                     method: 'GET'
                 });
                 
                 // Test connection latency (without audit logging for automatic checks)
                 const latencyStart = performance.now();
-                const testResponse = await fetch(`/api/v1/peer-sync/test-connection?log_to_audit=false`, {
+                const testResponse = await secureFetch(`/api/v1/peer-sync/test-connection?log_to_audit=false`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ peer: peerAddress })
@@ -3832,7 +3855,7 @@ async function loadPeerSyncConfig() {
 // Load own public key
 async function loadPeerSyncPublicKeys() {
     try {
-        const response = await fetch('/api/v1/peer-sync/public-keys');
+        const response = await secureFetch('/api/v1/peer-sync/public-keys');
         if (!response.ok) throw new Error('Failed to load public key');
         const keys = await response.json();
         
@@ -3852,7 +3875,7 @@ async function loadPeerSyncPublicKeys() {
         
         // Load own config status for display in Peer Nodes & Keys section
         try {
-            const statusResponse = await fetch('/api/v1/peer-sync/own-config-status');
+            const statusResponse = await secureFetch('/api/v1/peer-sync/own-config-status');
             if (statusResponse.ok) {
                 const ownStatus = await statusResponse.json();
                 const localConfigDiv = document.getElementById('localConfigLastModified');
@@ -3879,7 +3902,7 @@ async function regeneratePeerKey() {
     }
     
     try {
-        const response = await fetch('/api/v1/peer-sync/regenerate-key', {
+        const response = await secureFetch('/api/v1/peer-sync/regenerate-key', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         });
@@ -3906,7 +3929,7 @@ async function regeneratePeerKey() {
 // Update current server time display
 async function updateCurrentServerTime() {
     try {
-        const response = await fetch('/api/v1/peer-sync/current-time');
+        const response = await secureFetch('/api/v1/peer-sync/current-time');
         if (response.ok) {
             const data = await response.json();
             const timeDisplay = document.getElementById('currentTimeDisplay');
@@ -3929,7 +3952,7 @@ async function updateCurrentServerTime() {
 async function savePeerSyncConfig() {
     try {
         // Get current config to preserve peer_nodes and peer_public_keys
-        const currentResponse = await fetch('/api/v1/peer-sync/config');
+        const currentResponse = await secureFetch('/api/v1/peer-sync/config');
         const currentConfig = await currentResponse.json();
         
         // auto_sync_enabled removed - enabled=true means always auto-sync on every change
@@ -3946,7 +3969,7 @@ async function savePeerSyncConfig() {
             peer_public_keys: currentConfig.peer_public_keys || {}
         };
         
-        const response = await fetch('/api/v1/peer-sync/config', {
+        const response = await secureFetch('/api/v1/peer-sync/config', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(config)
@@ -3960,7 +3983,7 @@ async function savePeerSyncConfig() {
             timezone: document.getElementById('peerSyncTimezone').value || 'UTC'
         };
         
-        const ntpResponse = await fetch('/api/v1/peer-sync/ntp-config', {
+        const ntpResponse = await secureFetch('/api/v1/peer-sync/ntp-config', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(ntpConfig)
@@ -4072,7 +4095,7 @@ async function savePeerNode(peerIp) {
     }
     
     try {
-        const currentResponse = await fetch('/api/v1/peer-sync/config');
+        const currentResponse = await secureFetch('/api/v1/peer-sync/config');
         const currentConfig = await currentResponse.json();
         
         const newPeerIp = extractPeerIp(peerAddress);
@@ -4118,7 +4141,7 @@ async function savePeerNode(peerIp) {
             };
         }
         
-        const response = await fetch('/api/v1/peer-sync/config', {
+        const response = await secureFetch('/api/v1/peer-sync/config', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -4188,7 +4211,7 @@ async function pullNewestConfigWithConfirmation() {
     try {
         showToast('Searching for newest config in peer-to-peer network...', 'info');
         
-        const response = await fetch('/api/v1/peer-sync/find-newest-config');
+        const response = await secureFetch('/api/v1/peer-sync/find-newest-config');
         if (!response.ok) {
             throw new Error('Failed to find newest config');
         }
@@ -4212,7 +4235,7 @@ async function pullNewestConfigFromPeers() {
     try {
         showToast('Suche nach neuester Config...', 'info');
         
-        const response = await fetch('/api/v1/peer-sync/find-newest-config');
+        const response = await secureFetch('/api/v1/peer-sync/find-newest-config');
         if (!response.ok) {
             throw new Error('Failed to find newest config');
         }
@@ -4243,7 +4266,7 @@ async function removePeerNode(peerIp) {
         // Get the full peer address from the input field
         const peerAddress = addressInput ? addressInput.value.trim() : null;
         
-        const currentResponse = await fetch('/api/v1/peer-sync/config');
+        const currentResponse = await secureFetch('/api/v1/peer-sync/config');
         const currentConfig = await currentResponse.json();
         
         // Remove peer from peer_nodes by full address
@@ -4266,7 +4289,7 @@ async function removePeerNode(peerIp) {
             delete peerPublicKeys[peerIp];
         }
         
-        const response = await fetch('/api/v1/peer-sync/config', {
+        const response = await secureFetch('/api/v1/peer-sync/config', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -4306,7 +4329,7 @@ async function triggerPeerSync() {
         // Show "Sent to all peers" banner
         showToast('Sending configuration to all peers...', 'info');
         
-        const response = await fetch('/api/v1/peer-sync/sync-now', {
+        const response = await secureFetch('/api/v1/peer-sync/sync-now', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({})
@@ -4333,7 +4356,7 @@ async function triggerPeerSync() {
 // Check if auto-sync is enabled (enabled=true means always auto-sync)
 async function isAutoSyncEnabled() {
     try {
-        const response = await fetch('/api/v1/peer-sync/config');
+        const response = await secureFetch('/api/v1/peer-sync/config');
         if (!response.ok) return false;
         const config = await response.json();
         return Boolean(config.enabled);  // enabled=true means always auto-sync
@@ -4367,7 +4390,7 @@ async function triggerAutoSyncWithBanner() {
         const beforeSyncTime = new Date().toISOString();
         
         // Trigger auto-sync (fire-and-forget, don't wait for result)
-        fetch('/api/v1/peer-sync/auto-sync', {
+        secureFetch('/api/v1/peer-sync/auto-sync', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         }).catch(err => {
@@ -4377,7 +4400,7 @@ async function triggerAutoSyncWithBanner() {
         // Wait 2.5 seconds, then check Last Sync Events for the result
         setTimeout(async () => {
             try {
-                const response = await fetch('/api/v1/peer-sync/status');
+                const response = await secureFetch('/api/v1/peer-sync/status');
                 if (!response.ok) {
                     showToast('Auto-sync status check failed', 'error');
                     return;
@@ -4454,7 +4477,7 @@ async function triggerAutoSyncWithBanner() {
 // Test peer connection
 async function testPeerConnection(peer) {
     try {
-        const response = await fetch('/api/v1/peer-sync/test-connection', {
+        const response = await secureFetch('/api/v1/peer-sync/test-connection', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ peer: peer })
@@ -4483,7 +4506,7 @@ async function pullConfigFromPeer(peerAddress, peerName, showConfirmation = true
             showToast('Pulling config from peer...', 'info');
         }
         
-        const response = await fetch(`/api/v1/peer-sync/pull-config?peer=${encodeURIComponent(peerAddress)}`, {
+        const response = await secureFetch(`/api/v1/peer-sync/pull-config?peer=${encodeURIComponent(peerAddress)}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         });
