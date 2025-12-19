@@ -183,6 +183,41 @@ class LocalIPStorage:
                 yaml.dump(self._storage, f, default_flow_style=False, allow_unicode=True)
             # Update path for future use
             self.storage_path = home_storage
+        
+        # Broadcast config change event (for SSE clients)
+        # Note: This is called from async context (peer_sync), so we can safely use asyncio
+        try:
+            import asyncio
+            from src.config_events import get_config_event_broadcaster
+            broadcaster = get_config_event_broadcaster()
+            # Try to get running event loop
+            try:
+                loop = asyncio.get_running_loop()
+                # If loop is running, create task (non-blocking)
+                asyncio.create_task(broadcaster.broadcast("config_changed", {
+                    "source": "peer_sync",
+                    "generation": config_data.get("generation", {})
+                }))
+            except RuntimeError:
+                # No running event loop, try to get or create one
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        asyncio.create_task(broadcaster.broadcast("config_changed", {
+                            "source": "peer_sync",
+                            "generation": config_data.get("generation", {})
+                        }))
+                    else:
+                        # Loop exists but not running - this shouldn't happen in async context
+                        # Skip broadcasting to avoid blocking
+                        pass
+                except RuntimeError:
+                    # No event loop available, skip broadcasting
+                    pass
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to broadcast config change event: {e}")
     
     def set_local_ip(self, zone_id: str, rrset_id: str, local_ip: str, port: Optional[int] = None) -> None:
         """Set local IP for a DNS record"""

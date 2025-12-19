@@ -28,7 +28,7 @@ if 'src.config_manager' in sys.modules:
     src.config_manager._config_manager = None
 
 from fastapi import FastAPI, Request, HTTPException, Depends, Response
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -52,6 +52,7 @@ from src.smtp_notifier import get_smtp_notifier
 from src.split_brain_protection import get_split_brain_protection
 from src.peer_sync import get_peer_sync
 from src.peer_auth import verify_peer_signature, verify_peer_signature_for_body
+from src.config_events import get_config_event_broadcaster
 from pydantic import BaseModel
 from typing import Optional, List, Dict
 import logging
@@ -59,6 +60,7 @@ import httpx
 import asyncio
 import yaml
 import hashlib
+import json
 
 # Configure logging
 logging.basicConfig(
@@ -250,6 +252,7 @@ csrf_skip_paths = [
     "/api/v1/auth/login",
     "/api/v1/auth/logout",
     "/api/v1/sync/",  # Peer-to-peer uses X25519 authentication
+    "/api/v1/config/events",  # SSE endpoint (GET only, no CSRF needed)
 ]
 
 app.add_middleware(
@@ -388,6 +391,58 @@ async def root(request: Request):
                 content = content.replace('</head>', f'<meta name="csrf-token" content="{csrf_token}"></head>')
             return content
     return "<h1>Hetzner DNS Zone Tool</h1><p>Web-GUI is loading...</p>"
+
+
+@app.get("/api/v1/config/events")
+async def config_events_stream(request: Request):
+    """
+    Server-Sent Events (SSE) stream for configuration change notifications.
+    Clients will receive events when configuration changes occur (e.g., peer-sync updates).
+    """
+    # Check authentication
+    if not request.session.get("authenticated", False):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    broadcaster = get_config_event_broadcaster()
+    queue = await broadcaster.subscribe()
+    
+    async def event_generator():
+        """Generate SSE events from the queue"""
+        try:
+            # Send initial connection event
+            yield f"data: {json.dumps({'type': 'connected', 'message': 'SSE connection established'})}\n\n"
+            
+            while True:
+                # Check if client disconnected
+                if await request.is_disconnected():
+                    logger.debug("SSE client disconnected")
+                    break
+                
+                try:
+                    # Wait for event with timeout (allows periodic connection checks)
+                    event = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    # Format as SSE event
+                    yield f"data: {json.dumps(event)}\n\n"
+                except asyncio.TimeoutError:
+                    # Send keepalive ping every 30 seconds
+                    yield f": keepalive\n\n"
+                except Exception as e:
+                    logger.error(f"Error in SSE event generator: {e}")
+                    break
+        finally:
+            # Clean up: unsubscribe when client disconnects
+            await broadcaster.unsubscribe(queue)
+            logger.debug("SSE client unsubscribed")
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"  # Disable nginx buffering
+        }
+    )
 
 
 @app.get("/favicon.ico")

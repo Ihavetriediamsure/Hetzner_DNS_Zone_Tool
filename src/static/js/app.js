@@ -88,12 +88,79 @@ async function initAuth() {
     }
 }
 
+// Server-Sent Events (SSE) for config change notifications
+let configEventSource = null;
+
+function initConfigEventSource() {
+    // Close existing connection if any
+    if (configEventSource) {
+        configEventSource.close();
+        configEventSource = null;
+    }
+    
+    // Create new EventSource connection
+    configEventSource = new EventSource('/api/v1/config/events');
+    
+    configEventSource.onopen = function(event) {
+        console.log('SSE connection established');
+    };
+    
+    configEventSource.onmessage = function(event) {
+        try {
+            const data = JSON.parse(event.data);
+            
+            if (data.type === 'connected') {
+                console.log('SSE connected:', data.message);
+                return;
+            }
+            
+            if (data.type === 'config_changed') {
+                console.log('Config changed via peer-sync, refreshing UI...');
+                // Refresh zones and local IP status
+                if (typeof loadZones === 'function') {
+                    loadZones();
+                }
+                if (typeof loadLocalIPStatusInterval === 'function') {
+                    loadLocalIPStatusInterval();
+                }
+                // Show notification
+                if (typeof showToast === 'function') {
+                    showToast('Configuration updated from peer-sync', 'info');
+                }
+            }
+        } catch (error) {
+            console.error('Error parsing SSE event:', error);
+        }
+    };
+    
+    configEventSource.onerror = function(event) {
+        console.error('SSE connection error:', event);
+        // Reconnect after 5 seconds
+        setTimeout(() => {
+            if (configEventSource && configEventSource.readyState === EventSource.CLOSED) {
+                console.log('Reconnecting SSE...');
+                initConfigEventSource();
+            }
+        }, 5000);
+    };
+}
+
+function closeConfigEventSource() {
+    if (configEventSource) {
+        configEventSource.close();
+        configEventSource = null;
+    }
+}
+
 document.addEventListener('DOMContentLoaded', async function() {
     // Check authentication first
     const isAuthenticated = await initAuth();
     if (!isAuthenticated) {
         return; // Stop execution if not authenticated
     }
+    
+    // Initialize SSE connection for config change notifications
+    initConfigEventSource();
     
     // Load local IP status interval
     loadLocalIPStatusInterval();
