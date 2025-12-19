@@ -237,6 +237,11 @@ app.add_middleware(
 # CSRF Protection - Simple implementation using session
 def get_csrf_token(request: Request) -> str:
     """Generate or retrieve CSRF token from session"""
+    # Check if session is available in scope
+    if "session" not in request.scope:
+        # Session not available yet - return empty string
+        return ""
+    
     if "csrf_token" not in request.session:
         import secrets
         request.session["csrf_token"] = secrets.token_urlsafe(32)
@@ -249,14 +254,15 @@ def validate_csrf_token(request: Request) -> bool:
         return True
     
     # Defensive check: Ensure session is available (should always be true after SessionMiddleware)
-    if not hasattr(request, "session") or request.session is None:
+    # Check scope directly to avoid triggering the session property accessor
+    if "session" not in request.scope:
         # Session not available - this should not happen, but fail securely
         return False
     
     # Get token from header
     token_from_request = request.headers.get("X-CSRFToken") or request.headers.get("X-CSRF-Token")
     
-    # Get token from session
+    # Get token from session (now safe to access since we checked scope)
     token_from_session = request.session.get("csrf_token")
     
     if not token_from_session or not token_from_request:
