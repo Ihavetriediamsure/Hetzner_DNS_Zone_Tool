@@ -306,6 +306,14 @@ class ConfigManager:
         if 'tokens' not in config['api']:
             config['api']['tokens'] = []
         
+        # Check if token name already exists
+        tokens_list = config.get('api', {}).get('tokens', [])
+        name_lower = name.strip().lower()
+        for token_config in tokens_list:
+            existing_name = token_config.get('name', '').strip().lower()
+            if existing_name == name_lower:
+                raise ValueError(f"Token name '{name}' is already in use. Please choose a different name.")
+        
         # Set default base_url if not provided
         if not base_url:
             if api_type == 'new':
@@ -346,7 +354,14 @@ class ConfigManager:
         
         for token_config in tokens:
             if token_config.get('id') == token_id:
+                # Check if new name already exists (case-insensitive, excluding current token)
                 if name is not None:
+                    name_lower = name.strip().lower()
+                    for other_token in tokens:
+                        if other_token.get('id') != token_id:  # Exclude current token
+                            existing_name = other_token.get('name', '').strip().lower()
+                            if existing_name == name_lower:
+                                raise ValueError(f"Token name '{name}' is already in use. Please choose a different name.")
                     token_config['name'] = name
                 if base_url is not None:
                     token_config['base_url'] = base_url

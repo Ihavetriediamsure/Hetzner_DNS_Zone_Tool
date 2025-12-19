@@ -574,7 +574,11 @@ async def set_api_tokens(request: Request):
                     # Skip tokens that can't be decrypted
                     continue
         
-        token_id = config.add_token(token, name, api_type, base_url if base_url else None)
+        try:
+            token_id = config.add_token(token, name, api_type, base_url if base_url else None)
+        except ValueError as e:
+            # Handle duplicate name error
+            raise HTTPException(status_code=400, detail=str(e))
         
         # Audit log
         username = request.session.get("username", "unknown") if hasattr(request, 'session') else "unknown"
@@ -656,15 +660,19 @@ async def update_api_token(token_id: str, request: Request):
     name = data.get('name', '').strip() if data.get('name') else None
     base_url = data.get('base_url', '').strip() if data.get('base_url') else None
     
-    if config.update_token(token_id, token, name, base_url):
-        audit_log.log(
-            action=AuditAction.TOKEN_UPDATE,
-            username=username,
-            request=request,
-            success=True,
-            details={"token_id": token_id, "name_updated": name is not None}
-        )
-        return {"success": True, "message": "Token updated"}
+    try:
+        if config.update_token(token_id, token, name, base_url):
+            audit_log.log(
+                action=AuditAction.TOKEN_UPDATE,
+                username=username,
+                request=request,
+                success=True,
+                details={"token_id": token_id, "name_updated": name is not None}
+            )
+            return {"success": True, "message": "Token updated"}
+    except ValueError as e:
+        # Handle duplicate name error
+        raise HTTPException(status_code=400, detail=str(e))
     
     raise HTTPException(status_code=404, detail="Token not found")
 
