@@ -17,4 +17,6 @@ services:
     volumes:
       # Bind mount for configuration files
       # All config files, auth data, and logs will be stored here
-      - /home/admin/Applications/Temp/config:/config
+      # IMPORTANT: Change this path to your desired config directory
+      # Example: - ./config:/config (relative path) or - /path/to/your/config:/config (absolute path)
+      - ./config:/config
