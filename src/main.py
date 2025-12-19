@@ -280,9 +280,17 @@ async def security_middleware(request: Request, call_next):
     # This is safe because SessionMiddleware has already processed the request
     try:
         # Access session to ensure it's initialized in scope
-        _ = request.session
-    except (AttributeError, KeyError):
-        # Session not available - this should not happen after SessionMiddleware
+        # This will trigger SessionMiddleware to create the session if it doesn't exist
+        if "session" not in request.scope:
+            # SessionMiddleware hasn't processed this yet - this shouldn't happen
+            # but we'll continue and let it fail in validate_csrf_token if needed
+            pass
+        else:
+            # Touch session to ensure it's fully initialized
+            _ = request.session
+    except (AttributeError, KeyError, AssertionError) as e:
+        # Session not available - log but continue (will fail in validate_csrf_token)
+        logger.debug(f"Session access failed in security_middleware: {e}")
         pass
     
     # Skip CSRF validation for certain endpoints
