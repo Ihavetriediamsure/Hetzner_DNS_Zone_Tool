@@ -19,7 +19,6 @@ from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.backends import default_backend
 import hmac
-import hashlib
 from src.encryption import get_encryption_manager
 
 from src.local_ip_storage import get_local_ip_storage
