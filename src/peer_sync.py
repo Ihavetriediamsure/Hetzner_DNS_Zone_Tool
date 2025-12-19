@@ -895,7 +895,16 @@ class PeerSync:
             while self._running:
                 try:
                     await asyncio.sleep(self._sync_interval)
-                    if self._running:
+                    if not self._running:
+                        break
+                    # Reload config and check if still enabled before syncing
+                    self._load_config()
+                    if not self._enabled:
+                        logger.info("Peer-Sync disabled during loop, stopping background task")
+                        self._running = False
+                        break
+                    # Only sync if enabled and peers are configured
+                    if self._enabled and self._peer_nodes:
                         await self.sync_with_all_peers()
                 except asyncio.CancelledError:
                     break

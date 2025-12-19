@@ -3474,8 +3474,11 @@ async def update_peer_sync_ntp_config(request: Request):
         timezone = body.get("timezone", "UTC")
         
         # Before making local changes, check if we have the newest config
-        # If not, pull and merge first
-        await check_and_pull_newest_config_if_needed()
+        # If not, pull and merge first (only if peer-sync is enabled)
+        peer_sync = get_peer_sync()
+        peer_sync._load_config()
+        if peer_sync._enabled:
+            await check_and_pull_newest_config_if_needed()
         
         storage = get_local_ip_storage()
         storage.set_ntp_config(ntp_server, timezone)
@@ -3493,9 +3496,14 @@ async def update_peer_sync_ntp_config(request: Request):
         )
         
         # Trigger auto-sync to push config to all peers (NTP config is now part of local_ips.yaml)
-        await trigger_auto_sync_if_enabled()
-        
-        return {"success": True, "message": "NTP configuration updated and synced"}
+        # Only sync if peer-sync is enabled
+        peer_sync = get_peer_sync()
+        peer_sync._load_config()
+        if peer_sync._enabled:
+            await trigger_auto_sync_if_enabled()
+            return {"success": True, "message": "NTP configuration updated and synced"}
+        else:
+            return {"success": True, "message": "NTP configuration updated (peer-sync is disabled, not syncing)"}
     except Exception as e:
         logger.error(f"Error updating peer-sync NTP config: {e}")
         audit_log.log(
