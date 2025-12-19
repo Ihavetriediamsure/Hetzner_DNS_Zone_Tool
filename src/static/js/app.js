@@ -1,9 +1,24 @@
 // Main application JavaScript
 
-// CSRF Token Helper
+// CSRF Token Helper - Supports both cookie and meta tag
 function getCsrfToken() {
+    // Try meta tag first (preferred method)
     const metaTag = document.querySelector('meta[name="csrf-token"]');
-    return metaTag ? metaTag.getAttribute('content') : '';
+    if (metaTag) {
+        return metaTag.getAttribute('content') || '';
+    }
+    
+    // Fallback: Read from cookie (Double-Submit Cookie Pattern)
+    // Cookie name: csrf_token
+    const cookies = document.cookie.split('; ');
+    for (const cookie of cookies) {
+        const [name, value] = cookie.split('=');
+        if (name === 'csrf_token') {
+            return decodeURIComponent(value);
+        }
+    }
+    
+    return '';
 }
 
 // Enhanced fetch function that automatically includes CSRF token
@@ -16,8 +31,8 @@ async function secureFetch(url, options = {}) {
         if (!options.headers) {
             options.headers = {};
         }
-        // Starlette CSRFMiddleware expects X-CSRFToken header
-        options.headers['X-CSRFToken'] = csrfToken;
+        // CSRFMiddleware expects x-csrf-token header (lowercase, Double-Submit Cookie Pattern)
+        options.headers['x-csrf-token'] = csrfToken;
     }
     
     return fetch(url, options);

@@ -224,8 +224,7 @@ security_config = config.get('security', {})
 session_timeout = security_config.get('session_timeout_seconds', 3600)  # Default: 1 hour
 
 # IMPORTANT: In FastAPI, app.add_middleware() executes BEFORE @app.middleware("http") decorators
-# So SessionMiddleware (via add_middleware) will run BEFORE security_middleware (via @app.middleware)
-# This ensures request.session is available when security_middleware executes
+# Middleware order matters: SessionMiddleware -> CSRFMiddleware -> security_middleware
 app.add_middleware(
     SessionMiddleware,
     secret_key=session_secret,
@@ -234,117 +233,45 @@ app.add_middleware(
     https_only=False  # Set to True if always behind SSL proxy
 )
 
-# CSRF Protection - Simple implementation using session
+# CSRF Protection using Double-Submit Cookie Pattern
+# This is more robust than session-based CSRF as it doesn't depend on session persistence
+from src.csrf import CSRFMiddleware
+# Check if we're behind SSL proxy (for secure cookies)
+config = get_config_manager().load_config()
+security_config = config.get('security', {})
+use_secure_cookies = security_config.get('use_secure_cookies', False)  # Default: False (set to True if behind SSL proxy)
+
+# Define paths to skip CSRF validation
+csrf_skip_paths = [
+    "/health",
+    "/login",
+    "/setup",
+    "/favicon.ico",
+    "/static/",
+    "/api/v1/setup",
+    "/api/v1/auth/login",
+    "/api/v1/auth/logout",
+    "/api/v1/sync/",  # Peer-to-peer uses X25519 authentication
+]
+
+app.add_middleware(
+    CSRFMiddleware,
+    secure_cookies=use_secure_cookies,
+    skip_paths=csrf_skip_paths
+)
+
+# CSRF Protection - Helper function to get token from cookie (for HTML injection)
 def get_csrf_token(request: Request) -> str:
-    """Generate or retrieve CSRF token from session"""
-    # Ensure session is in scope (security_middleware should have done this)
-    if "session" not in request.scope:
-        request.scope["session"] = {}
-    
-    try:
-        if "csrf_token" not in request.session:
-            import secrets
-            request.session["csrf_token"] = secrets.token_urlsafe(32)
-        return request.session["csrf_token"]
-    except (AttributeError, AssertionError, KeyError):
-        # Session access failed - return empty string
-        return ""
+    """Get CSRF token from cookie (for HTML meta tag injection)"""
+    # CSRF token is now stored in cookie by CSRFMiddleware
+    return request.cookies.get("csrf_token", "")
 
-def validate_csrf_token(request: Request) -> bool:
-    """Validate CSRF token from request"""
-    # Skip CSRF check for GET, HEAD, OPTIONS
-    if request.method in ["GET", "HEAD", "OPTIONS"]:
-        return True
-    
-    # Get token from header
-    token_from_request = request.headers.get("X-CSRFToken") or request.headers.get("X-CSRF-Token")
-    
-    if not token_from_request:
-        # No token in header - fail
-        return False
-    
-    # Ensure session is in scope (security_middleware should have done this)
-    if "session" not in request.scope:
-        request.scope["session"] = {}
-    
-    try:
-        token_from_session = request.session.get("csrf_token")
-        
-        if not token_from_session:
-            # No token in session - fail
-            return False
-        
-        # Use constant-time comparison to prevent timing attacks
-        import hmac
-        if len(token_from_request) != len(token_from_session):
-            return False
-        return hmac.compare_digest(token_from_request.encode('utf-8'), token_from_session.encode('utf-8'))
-    except (AttributeError, KeyError, AssertionError, TypeError):
-        # Session access failed - fail securely
-        return False
-
-# Security Headers and CSRF Validation Middleware
-# Note: SessionMiddleware (via app.add_middleware) runs BEFORE this middleware,
-# but SessionMiddleware only initializes session in scope if a session cookie exists.
-# We need to ensure session is always in scope for CSRF validation to work.
+# Security Headers Middleware
+# Note: CSRF validation is now handled by CSRFMiddleware (cookie-based, more robust)
+# This middleware only adds security headers
 @app.middleware("http")
 async def security_middleware(request: Request, call_next):
-    """Add security headers and validate CSRF tokens"""
-    # SessionMiddleware runs before this middleware
-    # But SessionMiddleware only creates session in scope if a cookie exists
-    # We need to ensure session is always in scope for CSRF token storage
-    
-    # Initialize session in scope if not present
-    # This ensures SessionMiddleware can manage it properly
-    if "session" not in request.scope:
-        request.scope["session"] = {}
-    
-    # Ensure CSRF token exists in session for all requests (not just state-changing ones)
-    # This ensures the token is available when needed
-    try:
-        # Now access request.session - SessionMiddleware will manage it
-        if "csrf_token" not in request.session:
-            # Generate CSRF token if it doesn't exist
-            import secrets
-            request.session["csrf_token"] = secrets.token_urlsafe(32)
-    except (AttributeError, AssertionError, KeyError):
-        # Session not available - will fail in validate_csrf_token if needed
-        pass
-    
-    # Skip CSRF validation for certain endpoints
-    skip_csrf_paths = ["/health", "/login", "/setup", "/favicon.ico", "/static/"]
-    skip_csrf_api_paths = ["/api/v1/setup", "/api/v1/auth/login", "/api/v1/auth/logout"]
-    # Peer-to-peer sync endpoints use X25519 signature authentication, not session-based CSRF
-    skip_csrf_sync_paths = ["/api/v1/sync/"]
-    # TEMPORARY: Disable CSRF for WebGUI endpoints until session persistence is fixed
-    # WebGUI endpoints are protected by session authentication, which is sufficient for internal use
-    skip_csrf_webgui_paths = ["/api/v1/"]
-    skip_csrf = (any(request.url.path.startswith(path) for path in skip_csrf_paths) or 
-                 any(request.url.path == path for path in skip_csrf_api_paths) or
-                 any(request.url.path.startswith(path) for path in skip_csrf_sync_paths) or
-                 any(request.url.path.startswith(path) for path in skip_csrf_webgui_paths))
-    
-    # Validate CSRF token for state-changing requests
-    if not skip_csrf and request.method in ["POST", "PUT", "DELETE", "PATCH"]:
-        if not validate_csrf_token(request):
-            # Log for debugging (remove in production if needed)
-            token_from_request = request.headers.get("X-CSRFToken") or request.headers.get("X-CSRF-Token")
-            has_session = "session" in request.scope
-            try:
-                token_from_session = request.session.get("csrf_token") if has_session else None
-            except (AttributeError, AssertionError):
-                token_from_session = None
-            # Debug: Log token lengths and first/last chars to diagnose mismatch
-            req_len = len(token_from_request) if token_from_request else 0
-            sess_len = len(token_from_session) if token_from_session else 0
-            req_preview = f"{token_from_request[:8]}...{token_from_request[-8:]}" if token_from_request and len(token_from_request) > 16 else token_from_request
-            sess_preview = f"{token_from_session[:8]}...{token_from_session[-8:]}" if token_from_session and len(token_from_session) > 16 else token_from_session
-            logger.warning(f"CSRF validation failed for {request.url.path}: has_session={has_session}, token_in_header={bool(token_from_request)}, token_in_session={bool(token_from_session)}, req_len={req_len}, sess_len={sess_len}, req_preview={req_preview}, sess_preview={sess_preview}")
-            return JSONResponse(
-                status_code=403,
-                content={"error": "CSRF token validation failed", "message": "Invalid or missing CSRF token"}
-            )
-    
+    """Add security headers to all responses"""
     response = await call_next(request)
     
     # Add security headers
@@ -422,12 +349,10 @@ async def root(request: Request):
         if os.path.exists(setup_path):
             with open(setup_path, 'r', encoding='utf-8') as f:
                 content = f.read()
-                # Inject CSRF token into HTML
-                # Ensure session is available (should always be true after SessionMiddleware)
-                if "session" in request.scope:
-                    csrf_token = get_csrf_token(request)
-                    if csrf_token:
-                        content = content.replace('</head>', f'<meta name="csrf-token" content="{csrf_token}"></head>')
+                # Inject CSRF token into HTML (from cookie, set by CSRFMiddleware)
+                csrf_token = get_csrf_token(request)
+                if csrf_token:
+                    content = content.replace('</head>', f'<meta name="csrf-token" content="{csrf_token}"></head>')
                 return content
         return "<h1>Initial Setup Required</h1><p>Please configure the application first.</p>"
     
@@ -435,12 +360,10 @@ async def root(request: Request):
     if os.path.exists(index_path):
         with open(index_path, 'r', encoding='utf-8') as f:
             content = f.read()
-            # Inject CSRF token into HTML
-            # Ensure session is available (should always be true after SessionMiddleware)
-            if "session" in request.scope:
-                csrf_token = get_csrf_token(request)
-                if csrf_token:
-                    content = content.replace('</head>', f'<meta name="csrf-token" content="{csrf_token}"></head>')
+            # Inject CSRF token into HTML (from cookie, set by CSRFMiddleware)
+            csrf_token = get_csrf_token(request)
+            if csrf_token:
+                content = content.replace('</head>', f'<meta name="csrf-token" content="{csrf_token}"></head>')
             return content
     return "<h1>Hetzner DNS Zone Tool</h1><p>Web-GUI is loading...</p>"
 
@@ -462,12 +385,10 @@ async def login_page(request: Request):
         if os.path.exists(setup_path):
             with open(setup_path, 'r', encoding='utf-8') as f:
                 content = f.read()
-                # Inject CSRF token into HTML
-                # Ensure session is available (should always be true after SessionMiddleware)
-                if "session" in request.scope:
-                    csrf_token = get_csrf_token(request)
-                    if csrf_token:
-                        content = content.replace('</head>', f'<meta name="csrf-token" content="{csrf_token}"></head>')
+                # Inject CSRF token into HTML (from cookie, set by CSRFMiddleware)
+                csrf_token = get_csrf_token(request)
+                if csrf_token:
+                    content = content.replace('</head>', f'<meta name="csrf-token" content="{csrf_token}"></head>')
                 return content
         return "<h1>Initial Setup Required</h1><p>Please configure the application first.</p>"
     
@@ -475,12 +396,10 @@ async def login_page(request: Request):
     if os.path.exists(login_path):
         with open(login_path, 'r', encoding='utf-8') as f:
             content = f.read()
-            # Inject CSRF token into HTML
-            # Ensure session is available (should always be true after SessionMiddleware)
-            if "session" in request.scope:
-                csrf_token = get_csrf_token(request)
-                if csrf_token:
-                    content = content.replace('</head>', f'<meta name="csrf-token" content="{csrf_token}"></head>')
+            # Inject CSRF token into HTML (from cookie, set by CSRFMiddleware)
+            csrf_token = get_csrf_token(request)
+            if csrf_token:
+                content = content.replace('</head>', f'<meta name="csrf-token" content="{csrf_token}"></head>')
             return content
     return "<h1>Login</h1><p>Login page is loading...</p>"
 
