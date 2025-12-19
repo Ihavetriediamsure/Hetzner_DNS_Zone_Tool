@@ -285,6 +285,11 @@ async def security_middleware(request: Request, call_next):
     # Validate CSRF token for state-changing requests
     if not skip_csrf and request.method in ["POST", "PUT", "DELETE", "PATCH"]:
         if not validate_csrf_token(request):
+            # Log for debugging (remove in production if needed)
+            token_from_request = request.headers.get("X-CSRFToken") or request.headers.get("X-CSRF-Token")
+            has_session = "session" in request.scope
+            token_from_session = request.session.get("csrf_token") if has_session else None
+            logger.warning(f"CSRF validation failed for {request.url.path}: has_session={has_session}, token_in_header={bool(token_from_request)}, token_in_session={bool(token_from_session)}")
             return JSONResponse(
                 status_code=403,
                 content={"error": "CSRF token validation failed", "message": "Invalid or missing CSRF token"}
