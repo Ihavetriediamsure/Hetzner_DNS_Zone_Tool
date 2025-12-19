@@ -285,14 +285,17 @@ def validate_csrf_token(request: Request) -> bool:
 
 # Security Headers and CSRF Validation Middleware
 # Note: SessionMiddleware (via app.add_middleware) runs BEFORE this middleware,
-# but we need to ensure session is initialized by accessing request.session
+# but SessionMiddleware only initializes session in scope if a session cookie exists.
+# We need to ensure session is always in scope for CSRF validation to work.
 @app.middleware("http")
 async def security_middleware(request: Request, call_next):
     """Add security headers and validate CSRF tokens"""
-    # Note: SessionMiddleware (via app.add_middleware) should have already processed the request
-    # and initialized the session in request.scope. We don't access request.session here
-    # to avoid AssertionError if session isn't in scope. validate_csrf_token() will handle
-    # the session check safely.
+    # Ensure session is in scope - SessionMiddleware may not have initialized it if no cookie exists
+    # We initialize it here to ensure CSRF validation can work
+    if "session" not in request.scope:
+        # Initialize empty session dict in scope
+        # This allows us to access request.session without AssertionError
+        request.scope["session"] = {}
     
     # Skip CSRF validation for certain endpoints
     skip_csrf_paths = ["/health", "/login", "/setup", "/favicon.ico", "/static/"]
@@ -306,7 +309,10 @@ async def security_middleware(request: Request, call_next):
             # Log for debugging (remove in production if needed)
             token_from_request = request.headers.get("X-CSRFToken") or request.headers.get("X-CSRF-Token")
             has_session = "session" in request.scope
-            token_from_session = request.session.get("csrf_token") if has_session else None
+            try:
+                token_from_session = request.session.get("csrf_token") if has_session else None
+            except (AttributeError, AssertionError):
+                token_from_session = None
             logger.warning(f"CSRF validation failed for {request.url.path}: has_session={has_session}, token_in_header={bool(token_from_request)}, token_in_session={bool(token_from_session)}")
             return JSONResponse(
                 status_code=403,
