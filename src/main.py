@@ -290,6 +290,19 @@ def validate_csrf_token(request: Request) -> bool:
 @app.middleware("http")
 async def security_middleware(request: Request, call_next):
     """Add security headers and validate CSRF tokens"""
+    # Ensure CSRF token exists in session for all requests (not just state-changing ones)
+    # This ensures the token is available when needed
+    try:
+        if "session" in request.scope:
+            # Session is in scope, ensure CSRF token exists
+            if "csrf_token" not in request.session:
+                # Generate CSRF token if it doesn't exist
+                import secrets
+                request.session["csrf_token"] = secrets.token_urlsafe(32)
+    except (AttributeError, AssertionError, KeyError):
+        # Session not available - will fail in validate_csrf_token if needed
+        pass
+    
     # Skip CSRF validation for certain endpoints
     skip_csrf_paths = ["/health", "/login", "/setup", "/favicon.ico", "/static/"]
     skip_csrf_api_paths = ["/api/v1/setup", "/api/v1/auth/login", "/api/v1/auth/logout"]
@@ -301,22 +314,6 @@ async def security_middleware(request: Request, call_next):
     
     # Validate CSRF token for state-changing requests
     if not skip_csrf and request.method in ["POST", "PUT", "DELETE", "PATCH"]:
-        # Check if session is available - if not, CSRF validation will fail
-        # But we need to ensure session is initialized by SessionMiddleware first
-        # Try to access session to trigger SessionMiddleware initialization
-        try:
-            # This will trigger SessionMiddleware to initialize session if cookie exists
-            # If no cookie exists, this will raise AssertionError, which we handle
-            if "session" in request.scope:
-                # Session is in scope, ensure CSRF token exists
-                if "csrf_token" not in request.session:
-                    # Generate CSRF token if it doesn't exist
-                    import secrets
-                    request.session["csrf_token"] = secrets.token_urlsafe(32)
-        except (AttributeError, AssertionError, KeyError):
-            # Session not available - will fail in validate_csrf_token
-            pass
-        
         if not validate_csrf_token(request):
             # Log for debugging (remove in production if needed)
             token_from_request = request.headers.get("X-CSRFToken") or request.headers.get("X-CSRF-Token")
