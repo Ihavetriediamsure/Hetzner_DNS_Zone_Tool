@@ -58,6 +58,9 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             # Generate new token if not present
             csrf_token = secrets.token_urlsafe(32)
         
+        # Store token in request state for HTML injection (available before response)
+        request.state.csrf_token = csrf_token
+        
         # Validate CSRF token for unsafe methods
         if not self._should_skip_csrf(request):
             header_token = request.headers.get(CSRF_HEADER_NAME)

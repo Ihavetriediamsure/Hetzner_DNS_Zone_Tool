@@ -260,10 +260,13 @@ app.add_middleware(
     skip_paths=csrf_skip_paths
 )
 
-# CSRF Protection - Helper function to get token from cookie (for HTML injection)
+# CSRF Protection - Helper function to get token (for HTML injection)
 def get_csrf_token(request: Request) -> str:
-    """Get CSRF token from cookie (for HTML meta tag injection)"""
-    # CSRF token is now stored in cookie by CSRFMiddleware
+    """Get CSRF token from request state or cookie (for HTML meta tag injection)"""
+    # CSRF token is stored in request.state by CSRFMiddleware (available immediately)
+    # Fallback to cookie if state is not available
+    if hasattr(request.state, 'csrf_token'):
+        return request.state.csrf_token
     return request.cookies.get("csrf_token", "")
 
 # Security Headers Middleware
