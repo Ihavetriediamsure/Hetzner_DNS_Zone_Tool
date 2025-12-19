@@ -145,7 +145,9 @@ class BruteForceProtection:
                     remaining = int(lockout_end - current_time)
                     minutes = remaining // 60
                     seconds = remaining % 60
-                    return False, f"Zu viele fehlgeschlagene Login-Versuche. Bitte versuchen Sie es in {minutes} Minuten und {seconds} Sekunden erneut."
+                    minute_text = "minute" if minutes == 1 else "minutes"
+                    second_text = "second" if seconds == 1 else "seconds"
+                    return False, f"Too many failed login attempts. Please try again in {minutes} {minute_text} and {seconds} {second_text}."
                 
                 # Lockout expired, reset attempts
                 self._login_attempts[identifier] = []
@@ -192,7 +194,9 @@ class BruteForceProtection:
                     remaining = int(lockout_end - current_time)
                     minutes = remaining // 60
                     seconds = remaining % 60
-                    return False, f"Zu viele fehlgeschlagene 2FA-Versuche. Bitte versuchen Sie es in {minutes} Minuten und {seconds} Sekunden erneut."
+                    minute_text = "minute" if minutes == 1 else "minutes"
+                    second_text = "second" if seconds == 1 else "seconds"
+                    return False, f"Too many failed 2FA attempts. Please try again in {minutes} {minute_text} and {seconds} {second_text}."
                 
                 # Lockout expired, reset attempts
                 self._twofa_attempts[identifier] = []
@@ -257,7 +261,9 @@ class BruteForceProtection:
                     remaining = int(lockout_end - current_time)
                     minutes = remaining // 60
                     seconds = remaining % 60
-                    return False, f"Zu viele fehlgeschlagene Backup-Code-Versuche. Bitte versuchen Sie es in {minutes} Minuten und {seconds} Sekunden erneut."
+                    minute_text = "minute" if minutes == 1 else "minutes"
+                    second_text = "second" if seconds == 1 else "seconds"
+                    return False, f"Too many failed backup code attempts. Please try again in {minutes} {minute_text} and {seconds} {second_text}."
                 
                 # Lockout expired, reset attempts
                 self._backup_code_attempts[identifier] = []
