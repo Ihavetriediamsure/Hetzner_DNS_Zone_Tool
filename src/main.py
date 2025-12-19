@@ -3407,6 +3407,14 @@ async def get_config_status(request: Request):
         logger.error(f"Peer authentication error in get_config_status: {e}")
         raise HTTPException(status_code=403, detail="Peer authentication failed")
     
+    # Check if peer-sync is enabled (don't provide status if disabled)
+    from src.peer_sync import get_peer_sync
+    peer_sync = get_peer_sync()
+    peer_sync._load_config()  # Reload to ensure latest state
+    if not peer_sync._enabled:
+        logger.debug(f"Peer-sync disabled, rejecting status request from {peer_ip}")
+        raise HTTPException(status_code=403, detail="Peer-sync is disabled")
+    
     try:
         import hashlib
         from datetime import datetime
