@@ -1558,6 +1558,30 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+/**
+ * Extract IP or domain from a peer address string.
+ * Handles formats: IP:Port, http://IP:Port, https://domain:Port, domain:Port, etc.
+ * @param {string} peerAddress - Peer address in any format
+ * @returns {string} - Extracted IP or domain (without port and schema)
+ */
+function extractPeerIp(peerAddress) {
+    if (!peerAddress) return '';
+    
+    let address = peerAddress.trim();
+    
+    // Remove schema (http:// or https://)
+    if (address.includes('://')) {
+        address = address.split('://', 2)[1];
+    }
+    
+    // Remove port if present
+    if (address.includes(':')) {
+        address = address.split(':', 1)[0];
+    }
+    
+    return address;
+}
+
 async function deleteTokenById(tokenId) {
     if (!confirm(`Do you really want to delete this token?`)) {
         return;
@@ -3611,12 +3635,12 @@ async function loadPeerSyncConfig() {
         // Create a map of peer nodes to their public keys
         const peerMap = new Map();
         config.peer_nodes.forEach(peer => {
-            const peerIp = peer.split(':')[0];
+            const peerIp = extractPeerIp(peer);
             peerMap.set(peer, {
                 ip: peerIp,
                 address: peer,
-                public_key: config.peer_public_keys?.[peerIp]?.public_key || '',
-                name: config.peer_public_keys?.[peerIp]?.name || peerIp
+                public_key: config.peer_public_keys?.[peer]?.public_key || config.peer_public_keys?.[peerIp]?.public_key || '',
+                name: config.peer_public_keys?.[peer]?.name || config.peer_public_keys?.[peerIp]?.name || peerIp
             });
         });
         
@@ -3646,7 +3670,7 @@ async function loadPeerSyncConfig() {
         
         // Load config status and latency for all peers (async, non-blocking)
         const peerStatusPromises = Array.from(peerMap.keys()).map(async (peerAddress) => {
-            const peerIp = peerAddress.split(':')[0];
+            const peerIp = extractPeerIp(peerAddress);
             try {
                 // Get config status from peer (via our backend which handles signing)
                 const statusResponse = await fetch(`/api/v1/peer-sync/get-peer-config-status?peer=${encodeURIComponent(peerAddress)}`, {
@@ -3951,10 +3975,10 @@ async function addPeerNode() {
         return;
     }
     
-    const peerIp = peerAddress.split(':')[0];
+    const peerIp = extractPeerIp(peerAddress);
     const tbody = document.getElementById('peerNodesTableBody');
     
-    // Check if peer already exists
+    // Check if peer already exists (by full address or IP)
     const existingPeer = document.getElementById(`peerNodeRow_${peerIp}`);
     if (existingPeer) {
         showToast('Peer node already exists', 'error');
@@ -4029,11 +4053,11 @@ async function savePeerNode(peerIp) {
         const currentResponse = await fetch('/api/v1/peer-sync/config');
         const currentConfig = await currentResponse.json();
         
-        const newPeerIp = peerAddress.split(':')[0];
+        const newPeerIp = extractPeerIp(peerAddress);
         const originalAddress = addressInput.getAttribute('data-original');
-        const originalIp = originalAddress ? originalAddress.split(':')[0] : peerIp;
+        const originalIp = originalAddress ? extractPeerIp(originalAddress) : peerIp;
         
-        // Remove old peer if IP changed
+        // Remove old peer if address changed
         let peerNodes = [...currentConfig.peer_nodes];
         if (originalAddress && originalAddress !== peerAddress) {
             peerNodes = peerNodes.filter(p => p !== originalAddress);
@@ -4046,16 +4070,31 @@ async function savePeerNode(peerIp) {
         
         const peerPublicKeys = { ...currentConfig.peer_public_keys };
         
-        // Remove old IP entry if IP changed
-        if (originalIp !== newPeerIp && peerPublicKeys[originalIp]) {
-            delete peerPublicKeys[originalIp];
+        // Remove old entries (both by full address and by IP for backward compatibility)
+        if (originalAddress && originalAddress !== peerAddress) {
+            // Remove by original full address
+            if (peerPublicKeys[originalAddress]) {
+                delete peerPublicKeys[originalAddress];
+            }
+            // Remove by original IP (legacy format)
+            if (originalIp !== originalAddress && peerPublicKeys[originalIp]) {
+                delete peerPublicKeys[originalIp];
+            }
         }
         
-        // Add/update peer public key
-        peerPublicKeys[newPeerIp] = {
+        // Add/update peer public key using full address as key
+        peerPublicKeys[peerAddress] = {
             name: peerName || newPeerIp,
             public_key: peerPublicKey || ''
         };
+        
+        // Also keep legacy IP-based entry for backward compatibility (if different from address)
+        if (newPeerIp !== peerAddress && !peerPublicKeys[newPeerIp]) {
+            peerPublicKeys[newPeerIp] = {
+                name: peerName || newPeerIp,
+                public_key: peerPublicKey || ''
+            };
+        }
         
         const response = await fetch('/api/v1/peer-sync/config', {
             method: 'PUT',
@@ -4179,18 +4218,31 @@ async function removePeerNode(peerIp) {
     
     try {
         const addressInput = document.getElementById(`peerAddress_${peerIp}`);
-        const peerAddress = addressInput ? addressInput.value.trim() : `${peerIp}:8412`;
+        // Get the full peer address from the input field
+        const peerAddress = addressInput ? addressInput.value.trim() : null;
         
         const currentResponse = await fetch('/api/v1/peer-sync/config');
         const currentConfig = await currentResponse.json();
         
+        // Remove peer from peer_nodes by full address
         const peerNodes = currentConfig.peer_nodes.filter(p => {
-            const peerIpFromNode = p.split(':')[0];
+            if (peerAddress && p === peerAddress) {
+                return false; // Remove this peer
+            }
+            // Also check by IP for backward compatibility
+            const peerIpFromNode = extractPeerIp(p);
             return peerIpFromNode !== peerIp;
         });
         
         const peerPublicKeys = { ...currentConfig.peer_public_keys };
-        delete peerPublicKeys[peerIp];
+        // Remove by full address if available
+        if (peerAddress && peerPublicKeys[peerAddress]) {
+            delete peerPublicKeys[peerAddress];
+        }
+        // Also remove by IP (legacy format)
+        if (peerPublicKeys[peerIp]) {
+            delete peerPublicKeys[peerIp];
+        }
         
         const response = await fetch('/api/v1/peer-sync/config', {
             method: 'PUT',
