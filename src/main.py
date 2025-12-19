@@ -275,8 +275,13 @@ def validate_csrf_token(request: Request) -> bool:
             # No token in session - fail
             return False
         
-        return token_from_request == token_from_session
-    except (AttributeError, KeyError, AssertionError):
+        # Use constant-time comparison to prevent timing attacks
+        import hmac
+        import hashlib
+        if len(token_from_request) != len(token_from_session):
+            return False
+        return hmac.compare_digest(token_from_request.encode('utf-8'), token_from_session.encode('utf-8'))
+    except (AttributeError, KeyError, AssertionError, TypeError):
         # Session access failed - fail securely
         return False
 
@@ -287,18 +292,21 @@ def validate_csrf_token(request: Request) -> bool:
 @app.middleware("http")
 async def security_middleware(request: Request, call_next):
     """Add security headers and validate CSRF tokens"""
-    # Initialize session in scope if not present (SessionMiddleware behavior)
-    # Accessing request.session will trigger SessionMiddleware to create the session
-    # But we need to ensure it's in scope first
-    if "session" not in request.scope:
-        # Initialize empty session dict - SessionMiddleware will handle cookie creation
-        request.scope["session"] = {}
+    # SessionMiddleware runs before this middleware, so request.session should be available
+    # But SessionMiddleware only creates session in scope if a cookie exists
+    # We need to ensure CSRF token exists for all requests that might need it
     
     # Ensure CSRF token exists in session for all requests (not just state-changing ones)
     # This ensures the token is available when needed
     try:
-        # Access request.session to ensure SessionMiddleware processes it
-        # This will create the session if it doesn't exist
+        # Access request.session - this will work if SessionMiddleware has initialized it
+        # If no session cookie exists, SessionMiddleware won't create session in scope
+        # In that case, we'll create it manually for CSRF token storage
+        if "session" not in request.scope:
+            # No session cookie exists - create session for CSRF token
+            request.scope["session"] = {}
+        
+        # Now ensure CSRF token exists
         if "csrf_token" not in request.session:
             # Generate CSRF token if it doesn't exist
             import secrets
@@ -326,7 +334,12 @@ async def security_middleware(request: Request, call_next):
                 token_from_session = request.session.get("csrf_token") if has_session else None
             except (AttributeError, AssertionError):
                 token_from_session = None
-            logger.warning(f"CSRF validation failed for {request.url.path}: has_session={has_session}, token_in_header={bool(token_from_request)}, token_in_session={bool(token_from_session)}")
+            # Debug: Log token lengths and first/last chars to diagnose mismatch
+            req_len = len(token_from_request) if token_from_request else 0
+            sess_len = len(token_from_session) if token_from_session else 0
+            req_preview = f"{token_from_request[:8]}...{token_from_request[-8:]}" if token_from_request and len(token_from_request) > 16 else token_from_request
+            sess_preview = f"{token_from_session[:8]}...{token_from_session[-8:]}" if token_from_session and len(token_from_session) > 16 else token_from_session
+            logger.warning(f"CSRF validation failed for {request.url.path}: has_session={has_session}, token_in_header={bool(token_from_request)}, token_in_session={bool(token_from_session)}, req_len={req_len}, sess_len={sess_len}, req_preview={req_preview}, sess_preview={sess_preview}")
             return JSONResponse(
                 status_code=403,
                 content={"error": "CSRF token validation failed", "message": "Invalid or missing CSRF token"}
