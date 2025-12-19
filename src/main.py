@@ -383,8 +383,10 @@ async def set_machine_name(request: Request, machine_name_data: Dict[str, str]):
 
 
 @app.get("/api/v1/config/api-tokens")
-async def get_api_tokens():
+async def get_api_tokens(request: Request):
     """Get all API tokens"""
+    if not request.session.get("authenticated", False):
+        raise HTTPException(status_code=401, detail="Not authenticated")
     config = get_config_manager()
     tokens = config.get_all_tokens()
     
@@ -405,6 +407,8 @@ async def get_api_tokens():
 @app.post("/api/v1/config/api-tokens")
 async def set_api_tokens(request: Request):
     """Add a new API token or set old/new tokens (backward compatibility)"""
+    if not request.session.get("authenticated", False):
+        raise HTTPException(status_code=401, detail="Not authenticated")
     data = await request.json()
     config = get_config_manager()
     
@@ -475,6 +479,8 @@ async def set_api_tokens(request: Request):
 @app.delete("/api/v1/config/api-tokens/{token_id}")
 async def delete_api_token(token_id: str, request: Request):
     """Delete API token by ID"""
+    if not request.session.get("authenticated", False):
+        raise HTTPException(status_code=401, detail="Not authenticated")
     config = get_config_manager()
     
     # Try new format first
@@ -509,6 +515,8 @@ async def delete_api_token(token_id: str, request: Request):
 @app.put("/api/v1/config/api-tokens/{token_id}")
 async def update_api_token(token_id: str, request: Request):
     """Update an existing API token"""
+    if not request.session.get("authenticated", False):
+        raise HTTPException(status_code=401, detail="Not authenticated")
     username = request.session.get("username", "unknown") if hasattr(request, 'session') else "unknown"
     audit_log = get_audit_log()
     
