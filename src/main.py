@@ -253,22 +253,35 @@ def validate_csrf_token(request: Request) -> bool:
     if request.method in ["GET", "HEAD", "OPTIONS"]:
         return True
     
-    # Defensive check: Ensure session is available (should always be true after SessionMiddleware)
-    # Check scope directly to avoid triggering the session property accessor
-    if "session" not in request.scope:
-        # Session not available - this should not happen, but fail securely
-        return False
-    
     # Get token from header
     token_from_request = request.headers.get("X-CSRFToken") or request.headers.get("X-CSRF-Token")
     
-    # Get token from session (now safe to access since we checked scope)
-    token_from_session = request.session.get("csrf_token")
-    
-    if not token_from_session or not token_from_request:
+    if not token_from_request:
+        # No token in header - fail
         return False
     
-    return token_from_request == token_from_session
+    # Try to access session - this will create it if it doesn't exist (SessionMiddleware behavior)
+    # But we need to handle the case where session is not in scope yet
+    try:
+        # Check if session is in scope first
+        if "session" not in request.scope:
+            # Session not initialized - this means SessionMiddleware hasn't processed the request yet
+            # or no session cookie exists. For API requests without session, we can't validate CSRF.
+            # This should not happen if SessionMiddleware runs before security_middleware,
+            # but we'll fail securely.
+            return False
+        
+        # Now safe to access request.session
+        token_from_session = request.session.get("csrf_token")
+        
+        if not token_from_session:
+            # No token in session - fail
+            return False
+        
+        return token_from_request == token_from_session
+    except (AttributeError, KeyError, AssertionError):
+        # Session access failed - fail securely
+        return False
 
 # Security Headers and CSRF Validation Middleware
 # Note: SessionMiddleware (via app.add_middleware) runs BEFORE this middleware,
