@@ -274,7 +274,24 @@ def get_csrf_token(request: Request) -> str:
 # This middleware only adds security headers
 @app.middleware("http")
 async def security_middleware(request: Request, call_next):
-    """Add security headers to all responses"""
+    """Add security headers to all responses and sanitize request"""
+    # Remove session parameter from query string to prevent session IDs in URLs/logs
+    # This prevents session IDs from being logged or exposed in URLs
+    if "session" in request.query_params:
+        # Remove session parameter from query string
+        from urllib.parse import urlencode, parse_qs, urlparse, urlunparse
+        parsed = urlparse(str(request.url))
+        query_params = parse_qs(parsed.query, keep_blank_values=True)
+        query_params.pop("session", None)  # Remove session parameter
+        new_query = urlencode(query_params, doseq=True)
+        # Update request scope to remove session parameter
+        request.scope["query_string"] = new_query.encode() if new_query else b""
+        # Also update the URL object
+        if hasattr(request, "_url"):
+            # Reconstruct URL without session parameter
+            new_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
+            request._url = new_url
+    
     response = await call_next(request)
     
     # Add security headers
@@ -283,9 +300,13 @@ async def security_middleware(request: Request, call_next):
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     
-    # Remove Server header (information disclosure)
+    # Remove Server header (information disclosure) - ensure it's completely removed
+    # Uvicorn sets this header, so we need to explicitly remove it
+    # Try both lowercase and title case
     if "server" in response.headers:
         del response.headers["server"]
+    if "Server" in response.headers:
+        del response.headers["Server"]
     
     return response
 
