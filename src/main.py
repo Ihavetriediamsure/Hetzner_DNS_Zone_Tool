@@ -373,9 +373,11 @@ async def root(request: Request):
             with open(setup_path, 'r', encoding='utf-8') as f:
                 content = f.read()
                 # Inject CSRF token into HTML
-                csrf_token = get_csrf_token(request)
-                if csrf_token:
-                    content = content.replace('</head>', f'<meta name="csrf-token" content="{csrf_token}"></head>')
+                # Ensure session is available (should always be true after SessionMiddleware)
+                if "session" in request.scope:
+                    csrf_token = get_csrf_token(request)
+                    if csrf_token:
+                        content = content.replace('</head>', f'<meta name="csrf-token" content="{csrf_token}"></head>')
                 return content
         return "<h1>Initial Setup Required</h1><p>Please configure the application first.</p>"
     
@@ -384,9 +386,11 @@ async def root(request: Request):
         with open(index_path, 'r', encoding='utf-8') as f:
             content = f.read()
             # Inject CSRF token into HTML
-            csrf_token = get_csrf_token(request)
-            if csrf_token:
-                content = content.replace('</head>', f'<meta name="csrf-token" content="{csrf_token}"></head>')
+            # Ensure session is available (should always be true after SessionMiddleware)
+            if "session" in request.scope:
+                csrf_token = get_csrf_token(request)
+                if csrf_token:
+                    content = content.replace('</head>', f'<meta name="csrf-token" content="{csrf_token}"></head>')
             return content
     return "<h1>Hetzner DNS Zone Tool</h1><p>Web-GUI is loading...</p>"
 
@@ -409,9 +413,11 @@ async def login_page(request: Request):
             with open(setup_path, 'r', encoding='utf-8') as f:
                 content = f.read()
                 # Inject CSRF token into HTML
-                csrf_token = get_csrf_token(request)
-                if csrf_token:
-                    content = content.replace('</head>', f'<meta name="csrf-token" content="{csrf_token}"></head>')
+                # Ensure session is available (should always be true after SessionMiddleware)
+                if "session" in request.scope:
+                    csrf_token = get_csrf_token(request)
+                    if csrf_token:
+                        content = content.replace('</head>', f'<meta name="csrf-token" content="{csrf_token}"></head>')
                 return content
         return "<h1>Initial Setup Required</h1><p>Please configure the application first.</p>"
     
@@ -420,9 +426,11 @@ async def login_page(request: Request):
         with open(login_path, 'r', encoding='utf-8') as f:
             content = f.read()
             # Inject CSRF token into HTML
-            csrf_token = get_csrf_token(request)
-            if csrf_token:
-                content = content.replace('</head>', f'<meta name="csrf-token" content="{csrf_token}"></head>')
+            # Ensure session is available (should always be true after SessionMiddleware)
+            if "session" in request.scope:
+                csrf_token = get_csrf_token(request)
+                if csrf_token:
+                    content = content.replace('</head>', f'<meta name="csrf-token" content="{csrf_token}"></head>')
             return content
     return "<h1>Login</h1><p>Login page is loading...</p>"
 
