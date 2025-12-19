@@ -3645,25 +3645,47 @@ async function loadPeerSyncConfig() {
         });
         
         // Also add peers that have public keys but are not in peer_nodes
-        Object.entries(config.peer_public_keys || {}).forEach(([peerIp, peerData]) => {
-            const peerAddress = `${peerIp}:8412`; // Default port
-            if (!peerMap.has(peerAddress)) {
-                // Find matching peer node with same IP
-                const matchingPeer = config.peer_nodes.find(p => p.startsWith(peerIp + ':'));
-                if (matchingPeer) {
-                    peerMap.set(matchingPeer, {
+        // Handle peer_public_keys - keys can be either full addresses or IPs
+        Object.entries(config.peer_public_keys || {}).forEach(([key, peerData]) => {
+            // Check if key is already a full peer address
+            const isFullAddress = key.includes(':') || key.includes('://');
+            
+            if (isFullAddress) {
+                // Key is already a full address (e.g., "https://peer.example.com:443")
+                if (!peerMap.has(key)) {
+                    const peerIp = extractPeerIp(key);
+                    peerMap.set(key, {
                         ip: peerIp,
-                        address: matchingPeer,
+                        address: key,
                         public_key: peerData.public_key || '',
                         name: peerData.name || peerIp
                     });
-                } else {
-                    peerMap.set(peerAddress, {
-                        ip: peerIp,
-                        address: peerAddress,
-                        public_key: peerData.public_key || '',
-                        name: peerData.name || peerIp
+                }
+            } else {
+                // Key is just an IP (legacy format)
+                const peerIp = key;
+                const peerAddress = `${peerIp}:8412`; // Default port
+                if (!peerMap.has(peerAddress)) {
+                    // Find matching peer node with same IP
+                    const matchingPeer = config.peer_nodes.find(p => {
+                        const pIp = extractPeerIp(p);
+                        return pIp === peerIp;
                     });
+                    if (matchingPeer) {
+                        peerMap.set(matchingPeer, {
+                            ip: peerIp,
+                            address: matchingPeer,
+                            public_key: peerData.public_key || '',
+                            name: peerData.name || peerIp
+                        });
+                    } else {
+                        peerMap.set(peerAddress, {
+                            ip: peerIp,
+                            address: peerAddress,
+                            public_key: peerData.public_key || '',
+                            name: peerData.name || peerIp
+                        });
+                    }
                 }
             }
         });
