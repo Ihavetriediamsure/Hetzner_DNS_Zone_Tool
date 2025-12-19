@@ -237,10 +237,11 @@ app.add_middleware(
 # CSRF Protection - Simple implementation using session
 def get_csrf_token(request: Request) -> str:
     """Generate or retrieve CSRF token from session"""
-    # Access request.session to trigger SessionMiddleware initialization
-    # Don't manually set request.scope["session"] - let SessionMiddleware handle it
+    # Ensure session is in scope (security_middleware should have done this)
+    if "session" not in request.scope:
+        request.scope["session"] = {}
+    
     try:
-        _ = request.session  # Trigger session initialization if needed
         if "csrf_token" not in request.session:
             import secrets
             request.session["csrf_token"] = secrets.token_urlsafe(32)
@@ -262,10 +263,11 @@ def validate_csrf_token(request: Request) -> bool:
         # No token in header - fail
         return False
     
-    # Access request.session to trigger SessionMiddleware initialization
-    # Don't manually set request.scope["session"] - let SessionMiddleware handle it
+    # Ensure session is in scope (security_middleware should have done this)
+    if "session" not in request.scope:
+        request.scope["session"] = {}
+    
     try:
-        _ = request.session  # Trigger session initialization if needed
         token_from_session = request.session.get("csrf_token")
         
         if not token_from_session:
@@ -289,18 +291,18 @@ def validate_csrf_token(request: Request) -> bool:
 async def security_middleware(request: Request, call_next):
     """Add security headers and validate CSRF tokens"""
     # SessionMiddleware runs before this middleware
-    # Access request.session to trigger SessionMiddleware to initialize session if needed
-    # This ensures the session is properly managed by SessionMiddleware
+    # But SessionMiddleware only creates session in scope if a cookie exists
+    # We need to ensure session is always in scope for CSRF token storage
+    
+    # Initialize session in scope if not present
+    # This ensures SessionMiddleware can manage it properly
+    if "session" not in request.scope:
+        request.scope["session"] = {}
     
     # Ensure CSRF token exists in session for all requests (not just state-changing ones)
     # This ensures the token is available when needed
     try:
-        # Access request.session - this will trigger SessionMiddleware to create session if needed
-        # SessionMiddleware will create session in scope when we access request.session
-        # Even if no cookie exists, accessing request.session will create an empty session
-        _ = request.session  # Trigger session initialization
-        
-        # Now ensure CSRF token exists
+        # Now access request.session - SessionMiddleware will manage it
         if "csrf_token" not in request.session:
             # Generate CSRF token if it doesn't exist
             import secrets
