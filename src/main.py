@@ -276,22 +276,10 @@ def validate_csrf_token(request: Request) -> bool:
 @app.middleware("http")
 async def security_middleware(request: Request, call_next):
     """Add security headers and validate CSRF tokens"""
-    # Ensure session is initialized by accessing it (SessionMiddleware will create it if needed)
-    # This is safe because SessionMiddleware has already processed the request
-    try:
-        # Access session to ensure it's initialized in scope
-        # This will trigger SessionMiddleware to create the session if it doesn't exist
-        if "session" not in request.scope:
-            # SessionMiddleware hasn't processed this yet - this shouldn't happen
-            # but we'll continue and let it fail in validate_csrf_token if needed
-            pass
-        else:
-            # Touch session to ensure it's fully initialized
-            _ = request.session
-    except (AttributeError, KeyError, AssertionError) as e:
-        # Session not available - log but continue (will fail in validate_csrf_token)
-        logger.debug(f"Session access failed in security_middleware: {e}")
-        pass
+    # Note: SessionMiddleware (via app.add_middleware) should have already processed the request
+    # and initialized the session in request.scope. We don't access request.session here
+    # to avoid AssertionError if session isn't in scope. validate_csrf_token() will handle
+    # the session check safely.
     
     # Skip CSRF validation for certain endpoints
     skip_csrf_paths = ["/health", "/login", "/setup", "/favicon.ico", "/static/"]
