@@ -126,14 +126,21 @@ class BruteForceProtection:
         if not self._enabled:
             return True, None
         
-        # Check if IP is whitelisted - whitelisted IPs bypass brute-force protection
+        # Check IP access control (whitelist/blacklist)
         try:
             from src.ip_whitelist import get_ip_access_control
             ip_access = get_ip_access_control()
+            
+            # Check blacklist first - blacklisted IPs are always blocked
+            if ip_access.is_blacklist_enabled():
+                if not ip_access.is_ip_allowed(ip):
+                    return False, "Access denied: IP address is blacklisted"
+            
+            # Check if IP is whitelisted - whitelisted IPs bypass brute-force protection
             if ip_access.is_whitelist_enabled() and ip_access.is_ip_allowed(ip):
                 return True, None  # Whitelisted IP, bypass brute-force protection
         except Exception:
-            # If IP whitelist check fails, continue with brute-force protection
+            # If IP access control check fails, continue with brute-force protection
             pass
         
         with self._lock:
@@ -185,14 +192,21 @@ class BruteForceProtection:
         if not self._enabled:
             return True, None
         
-        # Check if IP is whitelisted - whitelisted IPs bypass brute-force protection
+        # Check IP access control (whitelist/blacklist)
         try:
             from src.ip_whitelist import get_ip_access_control
             ip_access = get_ip_access_control()
+            
+            # Check blacklist first - blacklisted IPs are always blocked
+            if ip_access.is_blacklist_enabled():
+                if not ip_access.is_ip_allowed(ip):
+                    return False, "Access denied: IP address is blacklisted"
+            
+            # Check if IP is whitelisted - whitelisted IPs bypass brute-force protection
             if ip_access.is_whitelist_enabled() and ip_access.is_ip_allowed(ip):
                 return True, None  # Whitelisted IP, bypass brute-force protection
         except Exception:
-            # If IP whitelist check fails, continue with brute-force protection
+            # If IP access control check fails, continue with brute-force protection
             pass
         
         with self._lock:
@@ -262,14 +276,21 @@ class BruteForceProtection:
         if not self._enabled:
             return True, None
         
-        # Check if IP is whitelisted - whitelisted IPs bypass brute-force protection
+        # Check IP access control (whitelist/blacklist)
         try:
             from src.ip_whitelist import get_ip_access_control
             ip_access = get_ip_access_control()
+            
+            # Check blacklist first - blacklisted IPs are always blocked
+            if ip_access.is_blacklist_enabled():
+                if not ip_access.is_ip_allowed(ip):
+                    return False, "Access denied: IP address is blacklisted"
+            
+            # Check if IP is whitelisted - whitelisted IPs bypass brute-force protection
             if ip_access.is_whitelist_enabled() and ip_access.is_ip_allowed(ip):
                 return True, None  # Whitelisted IP, bypass brute-force protection
         except Exception:
-            # If IP whitelist check fails, continue with brute-force protection
+            # If IP access control check fails, continue with brute-force protection
             pass
         
         with self._lock:
