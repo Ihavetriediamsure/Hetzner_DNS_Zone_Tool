@@ -300,8 +300,11 @@ async def security_middleware(request: Request, call_next):
     # Skip CSRF validation for certain endpoints
     skip_csrf_paths = ["/health", "/login", "/setup", "/favicon.ico", "/static/"]
     skip_csrf_api_paths = ["/api/v1/setup", "/api/v1/auth/login", "/api/v1/auth/logout"]
+    # Peer-to-peer sync endpoints use X25519 signature authentication, not session-based CSRF
+    skip_csrf_sync_paths = ["/api/v1/sync/"]
     skip_csrf = (any(request.url.path.startswith(path) for path in skip_csrf_paths) or 
-                 any(request.url.path == path for path in skip_csrf_api_paths))
+                 any(request.url.path == path for path in skip_csrf_api_paths) or
+                 any(request.url.path.startswith(path) for path in skip_csrf_sync_paths))
     
     # Validate CSRF token for state-changing requests
     if not skip_csrf and request.method in ["POST", "PUT", "DELETE", "PATCH"]:
