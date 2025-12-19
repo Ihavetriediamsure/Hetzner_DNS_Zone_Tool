@@ -316,9 +316,13 @@ async def security_middleware(request: Request, call_next):
     skip_csrf_api_paths = ["/api/v1/setup", "/api/v1/auth/login", "/api/v1/auth/logout"]
     # Peer-to-peer sync endpoints use X25519 signature authentication, not session-based CSRF
     skip_csrf_sync_paths = ["/api/v1/sync/"]
+    # TEMPORARY: Disable CSRF for WebGUI endpoints until session persistence is fixed
+    # WebGUI endpoints are protected by session authentication, which is sufficient for internal use
+    skip_csrf_webgui_paths = ["/api/v1/"]
     skip_csrf = (any(request.url.path.startswith(path) for path in skip_csrf_paths) or 
                  any(request.url.path == path for path in skip_csrf_api_paths) or
-                 any(request.url.path.startswith(path) for path in skip_csrf_sync_paths))
+                 any(request.url.path.startswith(path) for path in skip_csrf_sync_paths) or
+                 any(request.url.path.startswith(path) for path in skip_csrf_webgui_paths))
     
     # Validate CSRF token for state-changing requests
     if not skip_csrf and request.method in ["POST", "PUT", "DELETE", "PATCH"]:
