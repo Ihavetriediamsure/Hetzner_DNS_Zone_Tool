@@ -3308,6 +3308,14 @@ async def receive_sync_local_ips(request: Request):
         logger.error(f"Peer authentication error in receive_sync_local_ips: {e}")
         raise HTTPException(status_code=403, detail="Peer authentication failed")
     
+    # Check if peer-sync is enabled (don't accept configs if disabled)
+    from src.peer_sync import get_peer_sync
+    peer_sync = get_peer_sync()
+    peer_sync._load_config()  # Reload to ensure latest state
+    if not peer_sync._enabled:
+        logger.debug(f"Peer-sync disabled, rejecting config from {peer_ip}")
+        raise HTTPException(status_code=403, detail="Peer-sync is disabled")
+    
     try:
         from src.peer_sync import get_peer_sync, is_newer
         import base64
