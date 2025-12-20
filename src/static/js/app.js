@@ -115,18 +115,9 @@ function initConfigEventSource() {
             }
             
             if (data.type === 'config_changed') {
-                console.log('Config changed via peer-sync, refreshing UI...');
-                // Refresh zones and local IP status
-                if (typeof loadZones === 'function') {
-                    loadZones();
-                }
-                if (typeof loadLocalIPStatusInterval === 'function') {
-                    loadLocalIPStatusInterval();
-                }
-                // Show notification
-                if (typeof showToast === 'function') {
-                    showToast('Configuration updated from peer-sync', 'info');
-                }
+                // Config changed event - completely ignored to prevent session invalidation
+                // User must manually refresh to see changes
+                // No banner, no notification, no automatic refresh
             }
         } catch (error) {
             console.error('Error parsing SSE event:', error);
@@ -3799,12 +3790,7 @@ async function loadPeerSyncConfig() {
         const peerStatusPromises = Array.from(peerMap.keys()).map(async (peerAddress) => {
             const peerIp = extractPeerIp(peerAddress);
             try {
-                // Get config status from peer (via our backend which handles signing)
-                const statusResponse = await secureFetch(`/api/v1/peer-sync/get-peer-config-status?peer=${encodeURIComponent(peerAddress)}`, {
-                    method: 'GET'
-                });
-                
-                // Test connection latency (without audit logging for automatic checks)
+                // Test connection latency first (without audit logging for automatic checks)
                 const latencyStart = performance.now();
                 const testResponse = await secureFetch(`/api/v1/peer-sync/test-connection?log_to_audit=false`, {
                     method: 'POST',
@@ -3813,9 +3799,22 @@ async function loadPeerSyncConfig() {
                 });
                 const latency = Math.round(performance.now() - latencyStart);
                 
+                // Get config status from peer (via our backend which handles signing)
+                // Only try to get config status if connection test succeeded
                 let configStatus = null;
-                if (statusResponse.ok) {
-                    configStatus = await statusResponse.json();
+                if (testResponse.ok) {
+                    try {
+                        const statusResponse = await secureFetch(`/api/v1/peer-sync/get-peer-config-status?peer=${encodeURIComponent(peerAddress)}`, {
+                            method: 'GET'
+                        });
+                        
+                        if (statusResponse.ok) {
+                            configStatus = await statusResponse.json();
+                        }
+                    } catch (e) {
+                        // If config status fetch fails, continue with null (peer might be online but config status unavailable)
+                        console.debug(`Failed to get config status for peer ${peerAddress}:`, e);
+                    }
                 }
                 
                 return {
@@ -3899,6 +3898,8 @@ async function loadPeerSyncConfig() {
                 // Update public IP (always try to update, even if status is null)
                 const publicIpCell = document.getElementById(`peerPublicIp_${peerData.ip}`);
                 if (publicIpCell) {
+                    // configStatus is the direct response from /api/v1/sync/config-status
+                    // which contains: generation, config_hash, timestamp, public_ip
                     const publicIp = status && status.configStatus && status.configStatus.public_ip ? 
                         status.configStatus.public_ip : null;
                     if (publicIp) {
@@ -3914,6 +3915,8 @@ async function loadPeerSyncConfig() {
                 // Update config last modified
                 const configCell = document.getElementById(`peerConfigModified_${peerData.ip}`);
                 if (configCell) {
+                    // configStatus is the direct response from /api/v1/sync/config-status
+                    // which contains: generation, config_hash, timestamp, public_ip
                     if (status && status.configStatus && status.configStatus.timestamp) {
                         configCell.innerHTML = '<span style="font-size: 0.9em; font-family: inherit;">' + status.configStatus.timestamp + '</span>';
                     } else {

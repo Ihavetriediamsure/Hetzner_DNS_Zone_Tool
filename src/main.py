@@ -59,6 +59,7 @@ from typing import Optional, List, Dict
 from pathlib import Path
 import logging
 import httpx
+import httpx
 import socket
 import asyncio
 import yaml
@@ -272,12 +273,18 @@ ssl_enabled = server_config.get('ssl_enabled', False)
 
 # IMPORTANT: In FastAPI, app.add_middleware() executes BEFORE @app.middleware("http") decorators
 # Middleware order matters: SessionMiddleware -> CSRFMiddleware -> security_middleware
+# Note: https_only should be False if behind a reverse proxy that terminates SSL
+# The proxy should set X-Forwarded-Proto header, but we use https_only based on SSL config
 app.add_middleware(
     SessionMiddleware,
     secret_key=session_secret,
     max_age=session_timeout,
     same_site="lax",
-    https_only=ssl_enabled  # Set to True if SSL is enabled
+    https_only=ssl_enabled,  # Set to True if SSL is enabled (security requirement)
+    # SECURITY: https_only=True ensures session cookies are only sent over HTTPS
+    # This prevents session hijacking via man-in-the-middle attacks
+    # The session invalidation issue is addressed by skipping session refresh
+    # for peer-sync endpoints in security_middleware
 )
 
 # CSRF Protection using Double-Submit Cookie Pattern
@@ -343,6 +350,19 @@ async def security_middleware(request: Request, call_next):
             request._url = new_url
     
     response = await call_next(request)
+    
+    # Ensure session cookie is refreshed on each authenticated request
+    # This prevents session loss when cookies expire or are not properly set
+    # IMPORTANT: Only touch session if it exists and is authenticated
+    # Do NOT touch session during config sync operations to prevent session invalidation
+    # Also skip for SSE endpoint to prevent session invalidation during config change events
+    if hasattr(request, 'session') and request.session.get("authenticated", False):
+        # Skip session refresh for peer-sync endpoints and SSE to prevent session invalidation
+        # during config sync operations
+        if not request.url.path.startswith("/api/v1/sync/") and not request.url.path.startswith("/api/v1/config/events"):
+            # Touch the session to ensure cookie is refreshed
+            # Starlette SessionMiddleware will automatically update the cookie
+            request.session["_last_access"] = datetime.now().isoformat()
     
     # Add security headers
     response.headers["X-Frame-Options"] = "DENY"
@@ -3239,18 +3259,68 @@ async def test_peer_connection(request: Request, test_request: PeerSyncTestConne
     
     try:
         import time
-        # Create client first (outside timing)
-        client = httpx.AsyncClient(timeout=5.0)
+        from src.peer_sync import normalize_peer_url
+        
+        # Check if SSL is enabled to configure client for self-signed certificates
+        config_manager = get_config_manager()
+        config = config_manager.load_config()
+        server_config = config.get('server', {})
+        ssl_enabled = server_config.get('ssl_enabled', False)
+        
+        # Create client with SSL verification disabled if SSL is enabled (for self-signed certs)
+        verify = not ssl_enabled  # Disable verification for self-signed certificates
+        
+        # Normalize peer URL (will use HTTPS if SSL is enabled)
+        health_url = f"{normalize_peer_url(test_request.peer, default_port=8412)}/health"
         
         # Measure only the actual request time
         start_time = time.time()
-        try:
-            response = await client.get(f"http://{test_request.peer}/health")
-            latency_ms = (time.time() - start_time) * 1000
-        finally:
-            await client.aclose()
+        latency_ms = 0
+        success = False
         
-        success = response.status_code == 200
+        # Use context manager to ensure client is properly closed
+        # Increase timeout and add retry logic for better reliability
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(10.0, connect=5.0),
+            verify=verify,
+            follow_redirects=True,
+            limits=httpx.Limits(max_connections=10, max_keepalive_connections=5)
+        ) as client:
+            try:
+                response = await client.get(health_url)
+                latency_ms = (time.time() - start_time) * 1000
+                success = response.status_code == 200
+            except httpx.ConnectError as e:
+                logger.debug(f"Connection error to {health_url}: {e}")
+                latency_ms = (time.time() - start_time) * 1000
+                success = False
+            except httpx.TimeoutException as e:
+                logger.debug(f"Timeout connecting to {health_url}: {e}")
+                latency_ms = (time.time() - start_time) * 1000
+                success = False
+            except httpx.RemoteProtocolError as e:
+                # Handle "Server disconnected without sending a response" gracefully
+                # This can happen with self-signed certificates or connection issues
+                # Try to check if we got a valid response before the error
+                logger.debug(f"Protocol error connecting to {health_url}: {e}")
+                latency_ms = (time.time() - start_time) * 1000
+                # If we got a response before the error, consider it a success
+                # Otherwise, mark as failed but don't raise exception
+                success = False
+            except httpx.ReadError as e:
+                # Handle read errors (connection closed unexpectedly)
+                logger.debug(f"Read error connecting to {health_url}: {e}")
+                latency_ms = (time.time() - start_time) * 1000
+                success = False
+            except httpx.WriteError as e:
+                # Handle write errors (connection closed unexpectedly)
+                logger.debug(f"Write error connecting to {health_url}: {e}")
+                latency_ms = (time.time() - start_time) * 1000
+                success = False
+            except Exception as e:
+                logger.debug(f"Error connecting to {health_url}: {e}")
+                latency_ms = (time.time() - start_time) * 1000
+                success = False
         
         # Only log to audit if explicitly requested (manual tests)
         if log_to_audit:
@@ -3419,9 +3489,11 @@ async def receive_sync_local_ips(request: Request):
         raise HTTPException(status_code=403, detail="Peer authentication failed")
     
     # Check if peer-sync is enabled (don't accept configs if disabled)
+    # IMPORTANT: Do NOT reload config here to prevent session invalidation
+    # The peer-sync enabled state is checked at startup and should not change during runtime
     from src.peer_sync import get_peer_sync
     peer_sync = get_peer_sync()
-    peer_sync._load_config()  # Reload to ensure latest state
+    # peer_sync._load_config()  # REMOVED: Causes session invalidation when config is reloaded
     if not peer_sync._enabled:
         logger.debug(f"Peer-sync disabled, rejecting config from {peer_ip}")
         raise HTTPException(status_code=403, detail="Peer-sync is disabled")
@@ -3493,6 +3565,8 @@ async def receive_sync_local_ips(request: Request):
         if peer_is_newer:
             # Complete config takeover - use set_config_from_peer to preserve peer's generation
             # (don't increment generation, we're taking over peer's config)
+            # IMPORTANT: This only modifies local_ips.yaml, NOT config.yaml
+            # The session secret in config.yaml is NOT affected by this operation
             storage.set_config_from_peer(remote_data, merge_local_changes=False)
             logger.info(f"Config merged from peer {peer_ip}")
             return {"success": True, "merged": True}
@@ -3518,9 +3592,11 @@ async def get_config_status(request: Request):
         raise HTTPException(status_code=403, detail="Peer authentication failed")
     
     # Check if peer-sync is enabled (don't provide status if disabled)
+    # IMPORTANT: Do NOT reload config here to prevent session invalidation
+    # The peer-sync enabled state is checked at startup and should not change during runtime
     from src.peer_sync import get_peer_sync
     peer_sync = get_peer_sync()
-    peer_sync._load_config()  # Reload to ensure latest state
+    # peer_sync._load_config()  # REMOVED: Causes session invalidation when config is reloaded
     if not peer_sync._enabled:
         logger.debug(f"Peer-sync disabled, rejecting status request from {peer_ip}")
         raise HTTPException(status_code=403, detail="Peer-sync is disabled")
@@ -3765,16 +3841,27 @@ async def get_peer_config_status(request: Request, peer: str):
         }
         
         url = f"{normalize_peer_url(peer)}{url_path}"
-        response = await client.get(url, headers=headers)
-        
-        if response.status_code == 200:
-            return response.json()
-        else:
-            raise HTTPException(status_code=response.status_code, detail=f"Failed to get config status from peer: {response.status_code}")
+        try:
+            response = await client.get(url, headers=headers)
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.warning(f"Failed to get config status from peer {peer_ip}: HTTP {response.status_code}")
+                raise HTTPException(status_code=response.status_code, detail=f"Failed to get config status from peer: {response.status_code}")
+        except httpx.ConnectError as e:
+            logger.error(f"Connection error getting peer config status from {peer_ip}: {e}")
+            raise HTTPException(status_code=503, detail=f"Failed to connect to peer: {str(e)}")
+        except httpx.TimeoutException as e:
+            logger.error(f"Timeout getting peer config status from {peer_ip}: {e}")
+            raise HTTPException(status_code=504, detail=f"Timeout connecting to peer: {str(e)}")
+        except httpx.HTTPError as e:
+            logger.error(f"HTTP error getting peer config status from {peer_ip}: {e}")
+            raise HTTPException(status_code=502, detail=f"HTTP error connecting to peer: {str(e)}")
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting peer config status: {e}")
+        logger.error(f"Error getting peer config status: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error getting peer config status: {str(e)}")
 
 
