@@ -2,21 +2,20 @@ version: '3.8'
 
 services:
   hetzner-dns-zone-tool:
-    # Pre-built image from GitHub Container Registry
-    image: ghcr.io/ihavetriediamsure/hetzner_dns_zone_tool:latest
+    # Use locally built image for testing
+    image: hetzner-dns-zone-tool:latest
+    # Uncomment to use pre-built image from GitHub Container Registry:
+    # image: ghcr.io/ihavetriediamsure/hetzner_dns_zone_tool:latest
     
     # Automatically restart container if it stops
     restart: unless-stopped
     
     ports:
-      # Map container port 8000 to host port 8412
-      # Changed to 8412 to avoid conflict with Portainer (which uses port 8000)
-      # Access the web interface via http://localhost:8412
-      - "8412:8000"
+      # Map container port 443 (HTTPS) to host port 8412
+      # Access the web interface via https://localhost:8412 (self-signed certificate)
+      - "8412:443"
     
     volumes:
       # Bind mount for configuration files
       # All config files, auth data, and logs will be stored here
-      # IMPORTANT: Change this path to your desired config directory
-      # Example: - ./config:/config (relative path) or - /path/to/your/config:/config (absolute path)
       - ./config:/config

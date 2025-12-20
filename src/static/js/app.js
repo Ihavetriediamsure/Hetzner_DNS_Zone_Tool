@@ -4262,6 +4262,10 @@ async function savePeerNode(peerIp) {
                 if (configCell) {
                     configCell.id = `peerConfigModified_${newPeerIp}`;
                 }
+                const publicIpCell = document.getElementById(`peerPublicIp_${originalIp}`);
+                if (publicIpCell) {
+                    publicIpCell.id = `peerPublicIp_${newPeerIp}`;
+                }
                 // Latency column removed - no longer needed
                 // Update onclick handlers
                 const saveBtn = row.querySelector('button.btn-primary');

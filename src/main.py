@@ -53,14 +53,18 @@ from src.split_brain_protection import get_split_brain_protection
 from src.peer_sync import get_peer_sync
 from src.peer_auth import verify_peer_signature, verify_peer_signature_for_body
 from src.config_events import get_config_event_broadcaster
+from src.ssl_cert import get_or_create_ssl_certificates
 from pydantic import BaseModel
 from typing import Optional, List, Dict
+from pathlib import Path
 import logging
 import httpx
+import socket
 import asyncio
 import yaml
 import hashlib
 import json
+import socket
 
 # Configure logging
 logging.basicConfig(
@@ -146,6 +150,45 @@ async def check_and_pull_newest_config_if_needed():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events"""
+    # Startup: Generate SSL certificates if SSL is enabled
+    try:
+        config_manager = get_config_manager()
+        config = config_manager.load_config()
+        server_config = config.get('server', {})
+        ssl_enabled = server_config.get('ssl_enabled', False)
+        
+        if ssl_enabled:
+            # Determine config directory
+            config_dir = Path("/config") if os.path.exists("/config") else Path.home() / ".hetzner-dns"
+            config_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Get hostname for certificate
+            hostname = socket.gethostname()
+            if not hostname or hostname == "localhost":
+                hostname = "localhost"
+            
+            # Get or create SSL certificates
+            cert_path, key_path = get_or_create_ssl_certificates(config_dir, hostname)
+            
+            if cert_path and key_path:
+                # Update config with certificate paths if not set
+                if not server_config.get('ssl_cert_path'):
+                    server_config['ssl_cert_path'] = str(cert_path)
+                if not server_config.get('ssl_key_path'):
+                    server_config['ssl_key_path'] = str(key_path)
+                config['server'] = server_config
+                config_manager._config = config
+                config_manager.save_config()
+                logger.info(f"SSL enabled: certificates ready at {cert_path}")
+            else:
+                logger.error("SSL enabled but failed to generate certificates, disabling SSL")
+                server_config['ssl_enabled'] = False
+                config['server'] = server_config
+                config_manager._config = config
+                config_manager.save_config()
+    except Exception as e:
+        logger.error(f"Failed to setup SSL certificates: {e}")
+    
     # Startup: Start auto-update service
     auto_update_service = get_auto_update_service()
     try:
@@ -223,6 +266,10 @@ config = config_manager.load_config()
 security_config = config.get('security', {})
 session_timeout = security_config.get('session_timeout_seconds', 3600)  # Default: 1 hour
 
+# Check if SSL/HTTPS is enabled
+server_config = config.get('server', {})
+ssl_enabled = server_config.get('ssl_enabled', False)
+
 # IMPORTANT: In FastAPI, app.add_middleware() executes BEFORE @app.middleware("http") decorators
 # Middleware order matters: SessionMiddleware -> CSRFMiddleware -> security_middleware
 app.add_middleware(
@@ -230,16 +277,18 @@ app.add_middleware(
     secret_key=session_secret,
     max_age=session_timeout,
     same_site="lax",
-    https_only=False  # Set to True if always behind SSL proxy
+    https_only=ssl_enabled  # Set to True if SSL is enabled
 )
 
 # CSRF Protection using Double-Submit Cookie Pattern
 # This is more robust than session-based CSRF as it doesn't depend on session persistence
 from src.csrf import CSRFMiddleware
-# Check if we're behind SSL proxy (for secure cookies)
+# Check if we're behind SSL proxy or SSL is enabled (for secure cookies)
 config = get_config_manager().load_config()
 security_config = config.get('security', {})
-use_secure_cookies = security_config.get('use_secure_cookies', False)  # Default: False (set to True if behind SSL proxy)
+server_config = config.get('server', {})
+ssl_enabled = server_config.get('ssl_enabled', False)
+use_secure_cookies = security_config.get('use_secure_cookies', False) or ssl_enabled  # Auto-enable if SSL is enabled
 
 # Define paths to skip CSRF validation
 csrf_skip_paths = [
@@ -3831,5 +3880,29 @@ if __name__ == "__main__":
     server_config = cfg.get('server', {})
     host = server_config.get('host', '0.0.0.0')  # Default: listen on all interfaces (access control via IP whitelist/blacklist)
     port = server_config.get('port', 8000)
-    uvicorn.run(app, host=host, port=port)
+    ssl_enabled = server_config.get('ssl_enabled', False)
+    
+    if ssl_enabled:
+        # Determine config directory
+        config_dir = Path("/config") if os.path.exists("/config") else Path.home() / ".hetzner-dns"
+        cert_path = server_config.get('ssl_cert_path') or str(config_dir / "ssl_cert.pem")
+        key_path = server_config.get('ssl_key_path') or str(config_dir / "ssl_key.pem")
+        ssl_port = server_config.get('ssl_port', 443)
+        
+        # Verify certificates exist
+        if os.path.exists(cert_path) and os.path.exists(key_path):
+            logger.info(f"Starting HTTPS server on port {ssl_port} with SSL certificates")
+            uvicorn.run(
+                app,
+                host=host,
+                port=ssl_port,
+                ssl_keyfile=key_path,
+                ssl_certfile=cert_path
+            )
+        else:
+            logger.error(f"SSL enabled but certificates not found: {cert_path}, {key_path}")
+            logger.info("Falling back to HTTP on port 8000")
+            uvicorn.run(app, host=host, port=port)
+    else:
+        uvicorn.run(app, host=host, port=port)
 

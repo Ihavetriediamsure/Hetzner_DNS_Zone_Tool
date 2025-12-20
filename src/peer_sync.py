@@ -50,12 +50,30 @@ def normalize_peer_url(peer: str, default_port: int = 8412) -> str:
     if '://' in peer:
         return peer
     
-    # If contains port (has :), add http:// prefix
-    if ':' in peer:
-        return f"http://{peer}"
+    # Check if SSL is enabled to determine default protocol
+    # If SSL is enabled, always use HTTPS (regardless of port)
+    try:
+        from src.config_manager import get_config_manager
+        config_manager = get_config_manager()
+        config = config_manager.load_config()
+        server_config = config.get('server', {})
+        ssl_enabled = server_config.get('ssl_enabled', False)
+        
+        # If SSL is enabled, use HTTPS (port can be 8412 on host, but protocol is HTTPS)
+        if ssl_enabled:
+            protocol = "https"
+        else:
+            protocol = "http"
+    except Exception:
+        # Fallback to HTTP if config check fails
+        protocol = "http"
     
-    # No port specified, add default port
-    return f"http://{peer}:{default_port}"
+    # If contains port (has :), add protocol prefix
+    if ':' in peer:
+        return f"{protocol}://{peer}"
+    
+    # No port specified, add default port with protocol
+    return f"{protocol}://{peer}:{default_port}"
 
 
 def extract_peer_ip(peer: str) -> str:
@@ -457,7 +475,9 @@ class PeerSync:
                 "X-Peer-Signature": signature
             }
             
-            url = f"{normalize_peer_url(peer)}{url_path}"
+            # Use default port 8412 (Host-Port, mapped to Container-Port 443 if SSL enabled)
+            # normalize_peer_url will automatically use HTTPS if SSL is enabled
+            url = f"{normalize_peer_url(peer, default_port=8412)}{url_path}"
             response = await client.get(url, headers=headers, timeout=self._timeout)
             
             if response.status_code != 200:
@@ -538,7 +558,9 @@ class PeerSync:
                     "X-Peer-Signature": signature
                 }
                 
-                url = f"{normalize_peer_url(peer)}{url_path}"
+                # Use default port 8412 (Host-Port, mapped to Container-Port 443 if SSL enabled)
+                # normalize_peer_url will automatically use HTTPS if SSL is enabled
+                url = f"{normalize_peer_url(peer, default_port=8412)}{url_path}"
                 response = await client.get(url, headers=headers, timeout=self._timeout)
                 
                 if response.status_code == 200:
@@ -592,9 +614,24 @@ class PeerSync:
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client with connection pooling"""
         if self._client is None:
+            # Check if SSL is enabled to configure client for self-signed certificates
+            from src.config_manager import get_config_manager
+            config_manager = get_config_manager()
+            config = config_manager.load_config()
+            server_config = config.get('server', {})
+            ssl_enabled = server_config.get('ssl_enabled', False)
+            
+            # Configure SSL verification (disable for self-signed certificates)
+            verify = True  # Default: verify certificates
+            if ssl_enabled:
+                # For self-signed certificates, disable verification
+                # (Peer-to-peer uses X25519 authentication, so SSL verification is less critical)
+                verify = False
+            
             self._client = httpx.AsyncClient(
                 timeout=self._timeout,
-                limits=httpx.Limits(max_connections=20, max_keepalive_connections=10)
+                limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+                verify=verify
             )
         return self._client
     
@@ -675,7 +712,9 @@ class PeerSync:
                     "Content-Type": "application/json"
                 }
                 
-                post_url = f"{normalize_peer_url(peer)}{url_path}"
+                # Use default port 8412 (Host-Port, mapped to Container-Port 443 if SSL enabled)
+                # normalize_peer_url will automatically use HTTPS if SSL is enabled
+                post_url = f"{normalize_peer_url(peer, default_port=8412)}{url_path}"
                 
                 # Measure response time
                 request_start = time.time()

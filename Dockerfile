@@ -14,6 +14,7 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
+    openssl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
@@ -38,13 +39,14 @@ ENV AUDIT_LOG_FILE=/config/audit.log
 ENV LOCAL_IP_STORAGE_PATH=/config/local_ips.yaml
 ENV PYTHONUNBUFFERED=1
 
-# Expose port
-EXPOSE 8000
+# Expose ports
+EXPOSE 8000 443
 
-# Health check
+# Health check (try HTTPS first, fallback to HTTP)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+    CMD python -c "import urllib.request, ssl; ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE; urllib.request.urlopen('https://localhost:443/health', context=ctx)" || \
+    python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
 
 # Run the application
-# --no-server-header: Disable Server header to prevent information disclosure
-CMD ["python", "-m", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-server-header"]
+# Use custom startup script that handles SSL configuration
+CMD ["python", "src/start_server.py"]

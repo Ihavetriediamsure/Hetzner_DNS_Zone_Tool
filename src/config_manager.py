@@ -202,6 +202,40 @@ class ConfigManager:
         
         return base_url
     
+    def _migrate_ssl_config(self) -> None:
+        """Migrate SSL configuration: Add SSL settings if missing"""
+        config = self.load_config()
+        changed = False
+        
+        if 'server' not in config:
+            config['server'] = {}
+        
+        server_config = config['server']
+        
+        # Add SSL settings if missing (enable by default for new installations)
+        if 'ssl_enabled' not in server_config:
+            server_config['ssl_enabled'] = True
+            changed = True
+            logger.info("Config migration: Added ssl_enabled=True (default)")
+        
+        if 'ssl_port' not in server_config:
+            server_config['ssl_port'] = 443
+            changed = True
+            logger.info("Config migration: Added ssl_port=443 (default)")
+        
+        if 'ssl_cert_path' not in server_config:
+            server_config['ssl_cert_path'] = ''
+            changed = True
+        
+        if 'ssl_key_path' not in server_config:
+            server_config['ssl_key_path'] = ''
+            changed = True
+        
+        if changed:
+            self._config = config
+            self.save_config()
+            logger.info("Config migration: SSL settings migrated successfully")
+    
     def _migrate_old_tokens(self) -> None:
         """Migrate old token structure to new multi-token structure"""
         config = self.load_config()
@@ -233,6 +267,7 @@ class ConfigManager:
     def get_all_tokens(self) -> List[Dict[str, Any]]:
         """Get all API tokens"""
         self._migrate_old_tokens()
+        self._migrate_ssl_config()
         config = self.load_config()
         tokens = config.get('api', {}).get('tokens', [])
         
@@ -270,6 +305,7 @@ class ConfigManager:
     def get_token_by_id(self, token_id: str) -> Optional[Dict[str, Any]]:
         """Get token by ID"""
         self._migrate_old_tokens()
+        self._migrate_ssl_config()
         config = self.load_config()
         tokens = config.get('api', {}).get('tokens', [])
         
@@ -299,6 +335,7 @@ class ConfigManager:
     def add_token(self, token: str, name: str, api_type: str = 'new', base_url: Optional[str] = None) -> str:
         """Add a new API token and return its ID"""
         self._migrate_old_tokens()
+        self._migrate_ssl_config()
         config = self.load_config()
         
         if 'api' not in config:
@@ -349,6 +386,7 @@ class ConfigManager:
                      base_url: Optional[str] = None) -> bool:
         """Update an existing token"""
         self._migrate_old_tokens()
+        self._migrate_ssl_config()
         config = self.load_config()
         tokens = config.get('api', {}).get('tokens', [])
         
@@ -379,6 +417,7 @@ class ConfigManager:
     def delete_token(self, token_id: str) -> bool:
         """Delete a token by ID"""
         self._migrate_old_tokens()
+        self._migrate_ssl_config()
         config = self.load_config()
         tokens = config.get('api', {}).get('tokens', [])
         
@@ -438,7 +477,11 @@ class ConfigManager:
                 'host': '0.0.0.0',  # Listen on all interfaces by default (access control via IP whitelist/blacklist)
                 'port': 8000,
                 'machine_name': '',  # Machine name for email notifications (e.g. "my server")
-                'session_secret': ''  # Session secret for cookies (if empty, uses SESSION_SECRET env var or generates default)
+                'session_secret': '',  # Session secret for cookies (if empty, uses SESSION_SECRET env var or generates default)
+                'ssl_enabled': False,  # Enable HTTPS with self-signed certificate
+                'ssl_port': 443,  # HTTPS port (default: 443)
+                'ssl_cert_path': '',  # Path to SSL certificate (auto-generated if empty)
+                'ssl_key_path': ''  # Path to SSL private key (auto-generated if empty)
             },
             'auth': {
                 'username': 'admin',
