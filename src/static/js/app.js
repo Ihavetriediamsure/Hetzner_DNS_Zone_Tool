@@ -3739,7 +3739,7 @@ async function loadPeerSyncConfig() {
         
         // Create a map of peer nodes to their public keys
         const peerMap = new Map();
-        config.peer_nodes.forEach(peer => {
+        (config.peer_nodes || []).forEach(peer => {
             const peerIp = extractPeerIp(peer);
             peerMap.set(peer, {
                 ip: peerIp,
@@ -4185,7 +4185,7 @@ async function savePeerNode(peerIp) {
         const originalIp = originalAddress ? extractPeerIp(originalAddress) : peerIp;
         
         // Remove old peer if address changed
-        let peerNodes = [...currentConfig.peer_nodes];
+        let peerNodes = [...(currentConfig.peer_nodes || [])];
         if (originalAddress && originalAddress !== peerAddress) {
             peerNodes = peerNodes.filter(p => p !== originalAddress);
         }
@@ -4356,7 +4356,7 @@ async function removePeerNode(peerIp) {
         const currentConfig = await currentResponse.json();
         
         // Remove peer from peer_nodes by full address
-        const peerNodes = currentConfig.peer_nodes.filter(p => {
+        const peerNodes = (currentConfig.peer_nodes || []).filter(p => {
             if (peerAddress && p === peerAddress) {
                 return false; // Remove this peer
             }
