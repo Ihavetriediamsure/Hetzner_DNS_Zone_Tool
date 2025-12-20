@@ -63,8 +63,13 @@ Thumbs.db
 # Helper scripts (not for repository)
 *.sh
 !*.sh.example
-PUSH_TO_GITHUB.md
-DELETE_DOCKER_IMAGE_YML.md
-DOCKER_PUBLISH.md
-REMOVE_SH_FILES.md
+
+# Documentation files (keep only essential docs)
+*.md
+!README.md
+!DISCLAIMER.md
+!REQUIRED_FILES.md
+!SECURITY.md
+LICENSE*
+!LICENSE
 

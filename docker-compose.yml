@@ -2,10 +2,9 @@ version: '3.8'
 
 services:
   hetzner-dns-zone-tool:
-    # Use locally built image for testing
-    image: hetzner-dns-zone-tool:latest
-    # Uncomment to use pre-built image from GitHub Container Registry:
-    # image: ghcr.io/ihavetriediamsure/hetzner_dns_zone_tool:latest
+    # Pre-built image from GitHub Container Registry
+    # For local testing, use: image: hetzner-dns-zone-tool:latest
+    image: ghcr.io/ihavetriediamsure/hetzner_dns_zone_tool:latest
     
     # Automatically restart container if it stops
     restart: unless-stopped
@@ -18,4 +17,4 @@ services:
     volumes:
       # Bind mount for configuration files
       # All config files, auth data, and logs will be stored here
-      - ./config:/config
+      - /home/admin/Applications/Temp/config:/config

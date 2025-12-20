@@ -3,9 +3,12 @@
 import os
 import yaml
 import uuid
+import logging
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from src.encryption import get_encryption_manager
+
+logger = logging.getLogger(__name__)
 
 
 class ConfigManager:
@@ -33,6 +36,13 @@ class ConfigManager:
         else:
             self._config = self._default_config()
             self.save_config()
+        
+        # Run migrations after loading config (only once)
+        if not hasattr(self, '_migrations_run'):
+            # Run migrations on first load
+            self._migrate_old_tokens()
+            self._migrate_ssl_config()
+            self._migrations_run = True
         
         return self._config
     
@@ -204,7 +214,7 @@ class ConfigManager:
     
     def _migrate_ssl_config(self) -> None:
         """Migrate SSL configuration: Add SSL settings if missing"""
-        config = self.load_config()
+        config = self._config if self._config is not None else {}
         changed = False
         
         if 'server' not in config:
@@ -238,7 +248,7 @@ class ConfigManager:
     
     def _migrate_old_tokens(self) -> None:
         """Migrate old token structure to new multi-token structure"""
-        config = self.load_config()
+        config = self._config if self._config is not None else {}
         api_config = config.get('api', {})
         
         # Check if already migrated

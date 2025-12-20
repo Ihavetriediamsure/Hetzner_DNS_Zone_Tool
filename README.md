@@ -6,6 +6,9 @@
 A source-available web interface for managing **A and AAAA DNS records** in Hetzner DNS zones,
 with automated public IP updates, advanced security features, and integrated monitoring.
 
+This tool was developed as a hobby project to simplify DNS management and enable flexible 
+IP address management across multiple server locations in distributed environments.
+
 This tool is designed for self-hosted environments, homelabs, and infrastructure operators
 who need reliable DNS IP automation without relying on external SaaS services.
 

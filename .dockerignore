@@ -26,9 +26,14 @@ ENV/
 *.swo
 *~
 
-# Documentation (keep only REQUIRED_FILES.md)
+# Documentation (keep only essential docs)
 *.md
+!README.md
+!DISCLAIMER.md
 !REQUIRED_FILES.md
+!SECURITY.md
+LICENSE*
+!LICENSE
 
 # Backups and tests
 backups/
