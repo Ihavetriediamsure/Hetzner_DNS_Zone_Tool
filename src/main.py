@@ -345,10 +345,10 @@ def require_authenticated(request: Request) -> None:
 @app.middleware("http")
 async def security_middleware(request: Request, call_next):
     """Add security headers to all responses and sanitize request"""
-    # Protect API docs/schema in production-like usage
+    # Protect API docs/schema - return 404 since docs_url=None should disable them
+    # This is a safety net in case FastAPI still tries to serve them
     if request.url.path in ["/docs", "/redoc", "/openapi.json"]:
-        if not hasattr(request, "session") or not request.session.get("authenticated", False):
-            return JSONResponse(status_code=404, content={"detail": "Not found"})
+        return JSONResponse(status_code=404, content={"detail": "Not found"})
 
     # Remove session parameter from query string to prevent session IDs in URLs/logs
     # This prevents session IDs from being logged or exposed in URLs
