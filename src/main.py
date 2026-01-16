@@ -3451,7 +3451,7 @@ async def get_sync_local_ips(request: Request):
         
         # Sign encrypted data with our public key (HMAC-SHA256)
         sig_data = f"{encrypted_data_b64}:{nonce_b64}".encode()
-        signature = peer_sync._sign_data(sig_data)
+        signature = peer_sync._sign_data(sig_data, peer_x25519_pub)
         
         # Get our public key as Base64
         our_public_key_b64 = peer_sync.get_public_key_base64()
@@ -3833,7 +3833,8 @@ async def get_peer_config_status(request: Request, peer: str):
         
         url_path = "/api/v1/sync/config-status"
         request_data = f"GET:{url_path}".encode()
-        signature = peer_sync._sign_data(request_data)
+        peer_x25519_pub = peer_sync.peer_x25519_keys[peer_ip]
+        signature = peer_sync._sign_data(request_data, peer_x25519_pub)
         
         headers = {
             "X-Peer-Public-Key": our_public_key_b64,

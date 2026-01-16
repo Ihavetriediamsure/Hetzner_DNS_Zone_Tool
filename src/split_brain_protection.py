@@ -1,4 +1,8 @@
-"""Split-Brain Protection Module for IP Updates"""
+"""Split-Brain Protection Module for IP Updates
+
+Uses X25519 ECDH key exchange to derive shared secrets for HMAC-SHA256 authentication.
+Only peers with matching private keys can generate valid signatures.
+"""
 
 import asyncio
 import httpx
@@ -10,7 +14,9 @@ from typing import Dict, Any, Optional, List
 from pathlib import Path
 import os
 from cryptography.hazmat.primitives.asymmetric import x25519
-from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives import serialization, hashes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.backends import default_backend
 from src.encryption import get_encryption_manager
 
 logger = logging.getLogger(__name__)
@@ -112,6 +118,31 @@ class SplitBrainProtection:
         except Exception as e:
             logger.error(f"Failed to load own X25519 key: {e}")
     
+    def _derive_hmac_key(self, peer_public_key: x25519.X25519PublicKey) -> Optional[bytes]:
+        """
+        Derive HMAC key from X25519 shared secret using HKDF.
+        
+        Security: Only peers with the matching private key can generate valid signatures,
+        as the HMAC key is derived from the X25519 ECDH shared secret.
+        
+        Args:
+            peer_public_key: Peer's X25519 public key
+            
+        Returns:
+            32-byte HMAC key derived from shared secret, or None if own key not available
+        """
+        if not self._own_x25519_private_key:
+            return None
+        shared_key = self._own_x25519_private_key.exchange(peer_public_key)
+        hkdf = HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=None,
+            info=b'peer-sync-auth',
+            backend=default_backend()
+        )
+        return hkdf.derive(shared_key)
+    
     async def _get_client(self) -> httpx.AsyncClient:
         """Lazy initialization of httpx.AsyncClient with connection pooling"""
         if self._client is None:
@@ -194,19 +225,24 @@ class SplitBrainProtection:
                 if port:
                     params["port"] = port
                 
-                # Sign request with HMAC-SHA256 (using our public key)
+                # Sign request with HMAC-SHA256 using HKDF-derived shared secret from X25519 ECDH
+                # Security: Only peers with matching private key can generate valid signatures
                 # Use only the path + query string (not full URL) to match verification logic
                 query_string = "&".join([f"{k}={v}" for k, v in params.items()])
                 url_path = "/api/v1/peer-sync/check-monitor-ip"
                 full_url = f"{url_path}?{query_string}" if query_string else url_path
                 request_data = f"GET:{full_url}".encode()
+                peer_public_key = self._peer_x25519_keys.get(peer_ip)
+                if not peer_public_key:
+                    logger.debug(f"Missing peer public key for {peer_ip}, skipping")
+                    return None
                 
-                # Sign with our public key bytes (for HMAC)
-                our_public_key_bytes = self._own_x25519_public_key.public_bytes(
-                    encoding=serialization.Encoding.Raw,
-                    format=serialization.PublicFormat.Raw
-                )
-                signature = hmac.new(our_public_key_bytes, request_data, hashlib.sha256).digest()
+                hmac_key = self._derive_hmac_key(peer_public_key)
+                if not hmac_key:
+                    logger.warning("Own X25519 keys not available for signing")
+                    return None
+                
+                signature = hmac.new(hmac_key, request_data, hashlib.sha256).digest()
                 signature_b64 = base64.b64encode(signature).decode()
                 
                 headers = {

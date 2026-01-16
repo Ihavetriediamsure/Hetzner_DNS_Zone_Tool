@@ -1,4 +1,8 @@
-"""Peer Authentication with X25519 Public Key (WireGuard-style)"""
+"""Peer Authentication Module
+
+Uses X25519 ECDH key exchange to derive shared secrets for HMAC-SHA256 authentication.
+Only peers with matching private keys can generate valid signatures.
+"""
 
 import base64
 import hashlib
@@ -7,7 +11,9 @@ import logging
 from typing import Optional, Tuple
 from fastapi import Request, HTTPException, Header
 from cryptography.hazmat.primitives.asymmetric import x25519
-from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives import serialization, hashes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.backends import default_backend
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +24,10 @@ async def verify_peer_signature(
     signature_b64: Optional[str] = None
 ) -> Tuple[x25519.X25519PublicKey, str]:
     """
-    Verify HMAC-SHA256 signature from peer using X25519 public key
+    Verify HMAC-SHA256 signature from peer using X25519 ECDH-derived shared secret.
+    
+    Security: Uses HKDF to derive HMAC key from X25519 shared secret. Only peers with
+    the matching private key can generate valid signatures.
     
     Returns:
         Tuple of (peer_x25519_public_key, peer_ip)
@@ -83,14 +92,25 @@ async def verify_peer_signature(
             body_hash = hashlib.sha256(body).hexdigest()
             message = f"{method}:{full_url}:{body_hash}".encode()
         
-        # Verify HMAC-SHA256 signature using peer's public key
+        # Verify HMAC-SHA256 signature using HKDF-derived shared secret from X25519 ECDH
+        # Only peers with matching private key can generate valid signatures
         try:
             signature = base64.b64decode(signature_b64)
-            peer_public_key_bytes_raw = peer_public_key.public_bytes(
-                encoding=serialization.Encoding.Raw,
-                format=serialization.PublicFormat.Raw
+            from src.peer_sync import get_peer_sync
+            peer_sync = get_peer_sync()
+            if not peer_sync.x25519_private_key:
+                raise HTTPException(status_code=500, detail="Peer authentication key not available")
+            
+            shared_key = peer_sync.x25519_private_key.exchange(peer_public_key)
+            hkdf = HKDF(
+                algorithm=hashes.SHA256(),
+                length=32,
+                salt=None,
+                info=b'peer-sync-auth',
+                backend=default_backend()
             )
-            expected_signature = hmac.new(peer_public_key_bytes_raw, message, hashlib.sha256).digest()
+            hmac_key = hkdf.derive(shared_key)
+            expected_signature = hmac.new(hmac_key, message, hashlib.sha256).digest()
             
             if not hmac.compare_digest(expected_signature, signature):
                 raise HTTPException(status_code=403, detail="Invalid signature")
@@ -144,12 +164,15 @@ async def verify_peer_signature_for_body(
     signature_b64: str
 ) -> bool:
     """
-    Verify HMAC-SHA256 signature for request body (for POST requests with encrypted data)
+    Verify HMAC-SHA256 signature for request body using X25519 ECDH-derived shared secret.
+    
+    Security: Uses HKDF to derive HMAC key from X25519 shared secret. Only peers with
+    the matching private key can generate valid signatures.
     
     Args:
         request: FastAPI request object
         body_data: Request body bytes
-        peer_public_key: Peer's X25519 public key
+        peer_public_key: Peer's X25519 public key for key exchange
         signature_b64: Base64-encoded signature
     
     Returns:
@@ -161,11 +184,21 @@ async def verify_peer_signature_for_body(
         message = f"POST:{request.url.path}:{body_hash}".encode()
         
         signature = base64.b64decode(signature_b64)
-        peer_public_key_bytes_raw = peer_public_key.public_bytes(
-            encoding=serialization.Encoding.Raw,
-            format=serialization.PublicFormat.Raw
+        from src.peer_sync import get_peer_sync
+        peer_sync = get_peer_sync()
+        if not peer_sync.x25519_private_key:
+            return False
+        
+        shared_key = peer_sync.x25519_private_key.exchange(peer_public_key)
+        hkdf = HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=None,
+            info=b'peer-sync-auth',
+            backend=default_backend()
         )
-        expected_signature = hmac.new(peer_public_key_bytes_raw, message, hashlib.sha256).digest()
+        hmac_key = hkdf.derive(shared_key)
+        expected_signature = hmac.new(hmac_key, message, hashlib.sha256).digest()
         return hmac.compare_digest(expected_signature, signature)
     except Exception as e:
         logger.warning(f"Body signature verification failed: {e}")
