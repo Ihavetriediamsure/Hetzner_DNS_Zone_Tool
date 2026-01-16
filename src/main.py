@@ -245,7 +245,14 @@ async def lifespan(app: FastAPI):
         logger.error(f"Error stopping audit log rotation task: {e}")
 
 
-app = FastAPI(title="Hetzner DNS Zone Tool", version="1.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="Hetzner DNS Zone Tool",
+    version="1.0.0",
+    lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None
+)
 
 # Rate Limiter - Global rate limiting for API endpoints
 # Use secure IP extraction for rate limiting
@@ -341,7 +348,7 @@ async def security_middleware(request: Request, call_next):
     # Protect API docs/schema in production-like usage
     if request.url.path in ["/docs", "/redoc", "/openapi.json"]:
         if not hasattr(request, "session") or not request.session.get("authenticated", False):
-            return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+            return JSONResponse(status_code=404, content={"detail": "Not found"})
 
     # Remove session parameter from query string to prevent session IDs in URLs/logs
     # This prevents session IDs from being logged or exposed in URLs
@@ -1014,11 +1021,14 @@ async def auth_status(request: Request):
 
 
 @app.get("/api/v1/setup/status")
-async def setup_status():
+async def setup_status(request: Request):
     """Check if initial setup is required"""
     auth_manager = get_auth_manager()
     needs_setup = auth_manager.needs_setup()
-    return {"needs_setup": needs_setup}
+    if needs_setup:
+        return {"needs_setup": True}
+    require_authenticated(request)
+    return {"needs_setup": False}
 
 
 @app.post("/api/v1/setup", response_model=SetupResponse)
