@@ -62,7 +62,28 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         request.state.csrf_token = csrf_token
         
         # Validate CSRF token for unsafe methods
+        # Only enforce CSRF for authenticated sessions. For unauthenticated requests we
+        # prefer returning 401/403 from the endpoint auth checks (and avoid hard failures).
         if not self._should_skip_csrf(request):
+            try:
+                authenticated = hasattr(request, "session") and request.session.get("authenticated", False)
+            except Exception:
+                authenticated = False
+            
+            if not authenticated:
+                # Not authenticated: do not enforce CSRF here.
+                # The endpoint auth guard should handle this case (typically 401).
+                response = await call_next(request)
+                response.set_cookie(
+                    CSRF_COOKIE_NAME,
+                    csrf_token,
+                    httponly=False,
+                    samesite="lax",
+                    secure=self.secure_cookies,
+                    max_age=3600 * 24
+                )
+                return response
+
             header_token = request.headers.get(CSRF_HEADER_NAME)
             
             if not header_token:

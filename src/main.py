@@ -336,7 +336,8 @@ def get_csrf_token(request: Request) -> str:
 
 def require_authenticated(request: Request) -> None:
     """Raise 401 if the session is not authenticated."""
-    if not request.session.get("authenticated", False):
+    session = getattr(request, "session", None)
+    if not session or not session.get("authenticated", False):
         raise HTTPException(status_code=401, detail="Not authenticated")
 
 # Security Headers Middleware
