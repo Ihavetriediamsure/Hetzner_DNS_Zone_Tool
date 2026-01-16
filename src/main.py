@@ -340,7 +340,7 @@ async def security_middleware(request: Request, call_next):
     """Add security headers to all responses and sanitize request"""
     # Protect API docs/schema in production-like usage
     if request.url.path in ["/docs", "/redoc", "/openapi.json"]:
-        if not request.session.get("authenticated", False):
+        if not hasattr(request, "session") or not request.session.get("authenticated", False):
             return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
 
     # Remove session parameter from query string to prevent session IDs in URLs/logs
