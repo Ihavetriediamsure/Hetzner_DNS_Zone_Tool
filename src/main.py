@@ -1006,16 +1006,12 @@ async def auth_status(request: Request):
     if needs_setup:
         return {
             "authenticated": False,
-            "username": None,
             "needs_setup": True
         }
     
     authenticated = request.session.get("authenticated", False)
-    username = request.session.get("username", None)
-    
     return {
         "authenticated": authenticated,
-        "username": username,
         "needs_setup": False
     }
 
