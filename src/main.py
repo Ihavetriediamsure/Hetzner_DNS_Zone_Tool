@@ -326,12 +326,23 @@ def get_csrf_token(request: Request) -> str:
         return request.state.csrf_token
     return request.cookies.get("csrf_token", "")
 
+
+def require_authenticated(request: Request) -> None:
+    """Raise 401 if the session is not authenticated."""
+    if not request.session.get("authenticated", False):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
 # Security Headers Middleware
 # Note: CSRF validation is now handled by CSRFMiddleware (cookie-based, more robust)
 # This middleware only adds security headers
 @app.middleware("http")
 async def security_middleware(request: Request, call_next):
     """Add security headers to all responses and sanitize request"""
+    # Protect API docs/schema in production-like usage
+    if request.url.path in ["/docs", "/redoc", "/openapi.json"]:
+        if not request.session.get("authenticated", False):
+            return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+
     # Remove session parameter from query string to prevent session IDs in URLs/logs
     # This prevents session IDs from being logged or exposed in URLs
     if "session" in request.query_params:
@@ -1056,8 +1067,9 @@ async def initial_setup(request: Request, setup_data: SetupRequest):
 
 
 @app.get("/api/v1/zones")
-async def list_zones(token_id: Optional[str] = None):
+async def list_zones(request: Request, token_id: Optional[str] = None):
     """List all DNS zones (new API)"""
+    require_authenticated(request)
     try:
         client = HetznerDNSClient(token_id=token_id)
         try:
@@ -1090,6 +1102,7 @@ class CreateZoneRequest(BaseModel):
 @limiter.limit("30/minute")
 async def create_zone(zone_data: CreateZoneRequest, request: Request, token_id: Optional[str] = None):
     """Create a new DNS zone"""
+    require_authenticated(request)
     try:
         # Validate zone name
         if not zone_data.name or not zone_data.name.strip():
@@ -1151,6 +1164,7 @@ async def create_zone(zone_data: CreateZoneRequest, request: Request, token_id: 
 @limiter.limit("30/minute")
 async def delete_zone(zone_id: str, request: Request, token_id: Optional[str] = None):
     """Delete a DNS zone"""
+    require_authenticated(request)
     try:
         # Get zone name for confirmation
         client = HetznerDNSClient(token_id=token_id)
@@ -1201,8 +1215,9 @@ async def delete_zone(zone_id: str, request: Request, token_id: Optional[str] = 
 
 
 @app.get("/api/v1/public-ip")
-async def get_public_ip():
+async def get_public_ip(request: Request):
     """Get current public IP address (always shows automatically detected IP)"""
+    require_authenticated(request)
     try:
         # Always detect IP automatically (ignore manual IP setting for display)
         detector = get_ip_detector()
@@ -1226,18 +1241,19 @@ class SetPublicIPRequest(BaseModel):
 
 
 @app.put("/api/v1/public-ip/refresh-interval")
-async def set_public_ip_refresh_interval(request: RefreshIntervalRequest):
+async def set_public_ip_refresh_interval(interval_request: RefreshIntervalRequest, http_request: Request):
     """Set public IP refresh interval in seconds"""
+    require_authenticated(http_request)
     try:
-        if request.interval < 10:
+        if interval_request.interval < 10:
             raise HTTPException(status_code=400, detail="Interval must be at least 10 seconds")
-        if request.interval > 3600:
+        if interval_request.interval > 3600:
             raise HTTPException(status_code=400, detail="Interval must not exceed 3600 seconds (1 hour)")
         
         storage = get_local_ip_storage()
-        storage.set_public_ip_refresh_interval(request.interval)
+        storage.set_public_ip_refresh_interval(interval_request.interval)
         
-        return {"success": True, "interval": request.interval}
+        return {"success": True, "interval": interval_request.interval}
     except HTTPException:
         raise
     except Exception as e:
@@ -1247,6 +1263,7 @@ async def set_public_ip_refresh_interval(request: RefreshIntervalRequest):
 @app.put("/api/v1/public-ip")
 async def set_public_ip(request: SetPublicIPRequest, http_request: Request):
     """Set manual public IP address"""
+    require_authenticated(http_request)
     username = http_request.session.get("username", "unknown") if hasattr(http_request, 'session') else "unknown"
     audit_log = get_audit_log()
     
@@ -1298,8 +1315,9 @@ async def set_public_ip(request: SetPublicIPRequest, http_request: Request):
 
 
 @app.get("/api/v1/zones/{zone_id}/rrsets")
-async def list_zone_rrsets(zone_id: str, token_id: Optional[str] = None):
+async def list_zone_rrsets(zone_id: str, request: Request, token_id: Optional[str] = None):
     """List all RRSets for a zone"""
+    require_authenticated(request)
     try:
         client = HetznerDNSClient(token_id=token_id)
         try:
@@ -1446,6 +1464,7 @@ class CreateRRSetRequest(BaseModel):
 @app.post("/api/v1/zones/{zone_id}/rrsets/{rrset_id:path}/check-ip")
 async def check_ip_status(zone_id: str, rrset_id: str, request: CheckIPRequest, http_request: Request):
     """Check if an IP address is reachable"""
+    require_authenticated(http_request)
     try:
         monitor = get_internal_ip_monitor()
         result = await monitor.check_internal_ip_reachable(
@@ -1522,6 +1541,7 @@ async def check_ip_status(zone_id: str, rrset_id: str, request: CheckIPRequest, 
 @app.put("/api/v1/zones/{zone_id}/rrsets/{rrset_id:path}/auto-update")
 async def set_auto_update(zone_id: str, rrset_id: str, request: SetAutoUpdateRequest, http_request: Request):
     """Set auto-update enabled for a DNS record"""
+    require_authenticated(http_request)
     username = http_request.session.get("username", "unknown") if hasattr(http_request, 'session') else "unknown"
     audit_log = get_audit_log()
     
@@ -1560,6 +1580,7 @@ async def set_auto_update(zone_id: str, rrset_id: str, request: SetAutoUpdateReq
 @app.put("/api/v1/zones/{zone_id}/rrsets/{rrset_id:path}/ttl")
 async def set_ttl(zone_id: str, rrset_id: str, request: SetTTLRequest, http_request: Request, token_id: Optional[str] = None):
     """Set TTL for a DNS record"""
+    require_authenticated(http_request)
     try:
         allowed_ttl_values = [60, 300, 600, 1800, 3600, 86400]
         if request.ttl is not None and request.ttl not in allowed_ttl_values:
@@ -1623,6 +1644,7 @@ async def set_ttl(zone_id: str, rrset_id: str, request: SetTTLRequest, http_requ
 @app.put("/api/v1/zones/{zone_id}/rrsets/{rrset_id:path}/comment")
 async def set_comment(zone_id: str, rrset_id: str, request: SetCommentRequest, http_request: Request, token_id: Optional[str] = None):
     """Set comment for a DNS record"""
+    require_authenticated(http_request)
     try:
         client = HetznerDNSClient(token_id=token_id)
         try:
@@ -1669,6 +1691,7 @@ async def set_comment(zone_id: str, rrset_id: str, request: SetCommentRequest, h
 @app.put("/api/v1/zones/{zone_id}/rrsets/{rrset_id:path}/ip")
 async def set_ip(zone_id: str, rrset_id: str, request: SetIPRequest, http_request: Request, token_id: Optional[str] = None):
     """Set IP address for an A or AAAA DNS record"""
+    require_authenticated(http_request)
     try:
         # Validate IP is public (not private)
         is_valid, error_msg = IPValidator.validate_public_ip(request.ip)
@@ -1767,6 +1790,7 @@ async def set_ip(zone_id: str, rrset_id: str, request: SetIPRequest, http_reques
 @app.post("/api/v1/zones/{zone_id}/rrsets")
 async def create_rrset(zone_id: str, request: CreateRRSetRequest, http_request: Request, token_id: Optional[str] = None):
     """Create a new RRSet (A or AAAA record)"""
+    require_authenticated(http_request)
     try:
         # Validate record type
         if request.type not in ['A', 'AAAA']:
@@ -1823,6 +1847,7 @@ async def create_rrset(zone_id: str, request: CreateRRSetRequest, http_request: 
 @app.put("/api/v1/zones/{zone_id}/rrsets/{rrset_id:path}")
 async def update_rrset(zone_id: str, rrset_id: str, request: UpdateRRSetRequest, http_request: Request, token_id: Optional[str] = None):
     """Update an RRSet"""
+    require_authenticated(http_request)
     try:
         # URL encode rrset_id for API call
         import urllib.parse
@@ -1917,6 +1942,7 @@ async def update_rrset(zone_id: str, rrset_id: str, request: UpdateRRSetRequest,
 @app.post("/api/v1/zones/{zone_id}/rrsets/{rrset_id:path}/assign-server-ip")
 async def assign_server_ip(zone_id: str, rrset_id: str, request: Request, token_id: Optional[str] = None):
     """Assign current server public IP to an RRSet"""
+    require_authenticated(request)
     try:
         # Get public IP (check manual IP first, then auto-detect)
         storage = get_local_ip_storage()
@@ -2032,8 +2058,9 @@ async def assign_server_ip(zone_id: str, rrset_id: str, request: Request, token_
 
 
 @app.post("/api/v1/zones/{zone_id}/rrsets/{rrset_id:path}/local-ip")
-async def save_local_ip(zone_id: str, rrset_id: str, request: SaveLocalIPRequest, token_id: Optional[str] = None):
+async def save_local_ip(zone_id: str, rrset_id: str, request: SaveLocalIPRequest, http_request: Request, token_id: Optional[str] = None):
     """Save local IP for a DNS record"""
+    require_authenticated(http_request)
     try:
         # Validate IP format
         import re
@@ -2060,8 +2087,9 @@ async def save_local_ip(zone_id: str, rrset_id: str, request: SaveLocalIPRequest
 
 
 @app.delete("/api/v1/zones/{zone_id}/rrsets/{rrset_id:path}/local-ip")
-async def delete_local_ip(zone_id: str, rrset_id: str, token_id: Optional[str] = None):
+async def delete_local_ip(zone_id: str, rrset_id: str, request: Request, token_id: Optional[str] = None):
     """Delete local IP for a DNS record"""
+    require_authenticated(request)
     try:
         # Before making local changes, check if we have the newest config
         await check_and_pull_newest_config_if_needed()
@@ -2080,6 +2108,7 @@ async def delete_local_ip(zone_id: str, rrset_id: str, token_id: Optional[str] =
 @app.delete("/api/v1/zones/{zone_id}/rrsets/{rrset_id:path}")
 async def delete_rrset(zone_id: str, rrset_id: str, request: Request, token_id: Optional[str] = None):
     """Delete an RRSet (DNS record)"""
+    require_authenticated(request)
     try:
         # Get RRSet info for confirmation
         client = HetznerDNSClient(token_id=token_id)
@@ -2137,8 +2166,9 @@ async def delete_rrset(zone_id: str, rrset_id: str, request: Request, token_id: 
 
 
 @app.delete("/api/v1/zones/{zone_id}/rrsets/{rrset_id:path}/settings")
-async def delete_rrset_settings(zone_id: str, rrset_id: str):
+async def delete_rrset_settings(zone_id: str, rrset_id: str, request: Request):
     """Delete all settings (local IP, auto-update, TTL) for a DNS record"""
+    require_authenticated(request)
     try:
         # Before making local changes, check if we have the newest config
         await check_and_pull_newest_config_if_needed()
@@ -2163,8 +2193,9 @@ async def delete_rrset_settings(zone_id: str, rrset_id: str):
 
 
 @app.get("/api/v1/auto-update/status")
-async def get_auto_update_status():
+async def get_auto_update_status(request: Request):
     """Get auto-update service status"""
+    require_authenticated(request)
     try:
         service = get_auto_update_service()
         status = service.get_status()
@@ -2174,8 +2205,9 @@ async def get_auto_update_status():
 
 
 @app.post("/api/v1/auto-update/check")
-async def trigger_auto_update_check():
+async def trigger_auto_update_check(request: Request):
     """Manually trigger an auto-update check"""
+    require_authenticated(request)
     try:
         service = get_auto_update_service()
         results = await service.check_and_update_all()
@@ -2185,8 +2217,9 @@ async def trigger_auto_update_check():
 
 
 @app.get("/api/v1/auto-update/interval")
-async def get_auto_update_interval():
+async def get_auto_update_interval(request: Request):
     """Get auto-update check interval"""
+    require_authenticated(request)
     try:
         storage = get_local_ip_storage()
         interval = storage.get_auto_update_interval()
@@ -2198,6 +2231,7 @@ async def get_auto_update_interval():
 @app.put("/api/v1/auto-update/interval")
 async def set_auto_update_interval(request: RefreshIntervalRequest, http_request: Request):
     """Set auto-update check interval in seconds"""
+    require_authenticated(http_request)
     username = http_request.session.get("username", "unknown") if hasattr(http_request, 'session') else "unknown"
     audit_log = get_audit_log()
     
