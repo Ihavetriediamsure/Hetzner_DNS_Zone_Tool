@@ -35,7 +35,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from contextlib import asynccontextmanager
 from datetime import datetime
-from src.models import HealthResponse, LoginRequest, LoginResponse, ChangePasswordRequest, TwoFactorSetupRequest, TwoFactorVerifyRequest, SecurityConfigResponse, IPAccessControlResponse, TwoFactorStatus, IPWhitelistEntry, BruteForceConfigResponse, BruteForceConfigRequest, SMTPConfigResponse, SMTPConfigRequest, SetupRequest, SetupResponse, AuditLogConfigResponse, AuditLogConfigRequest, PeerSyncConfigResponse, PeerSyncConfigRequest, PeerSyncPublicKeysResponse, PeerSyncStatusResponse, PeerSyncSyncNowRequest, PeerSyncTestConnectionRequest
+from src.models import HealthResponse, LoginRequest, LoginResponse, ChangePasswordRequest, TwoFactorSetupRequest, TwoFactorVerifyRequest, SecurityConfigResponse, IPAccessControlResponse, TwoFactorStatus, IPWhitelistEntry, BruteForceConfigResponse, BruteForceConfigRequest, SMTPConfigResponse, SMTPConfigRequest, SetupRequest, SetupResponse, AuditLogConfigResponse, AuditLogConfigRequest, PeerSyncConfigResponse, PeerSyncConfigRequest, PeerSyncPublicKeysResponse, PeerSyncStatusResponse, PeerSyncSyncNowRequest, PeerSyncTestConnectionRequest, TrustedProxyConfigResponse, TrustedProxyConfigRequest
 from src.config_manager import get_config_manager
 from src.auth import get_auth_manager
 from src.two_factor import get_two_factor_auth
@@ -2591,6 +2591,63 @@ async def get_ip_access_control_config(request: Request):
         blacklist_ips=ip_access.get_blacklist_ips(),
         mode=ip_access.get_mode()
     )
+
+
+@app.get("/api/v1/security/trusted-proxies", response_model=TrustedProxyConfigResponse)
+async def get_trusted_proxies(request: Request):
+    """Get trusted reverse proxy IPs/CIDRs (for X-Forwarded-For validation)."""
+    require_authenticated(request)
+    config_manager = get_config_manager()
+    config = config_manager.load_config()
+    trusted = (config.get("security", {}) or {}).get("trusted_proxy_ips", []) or []
+    trusted_list = [str(x).strip() for x in trusted if str(x).strip()]
+    return TrustedProxyConfigResponse(trusted_proxy_ips=trusted_list)
+
+
+@app.put("/api/v1/security/trusted-proxies", response_model=TrustedProxyConfigResponse)
+async def update_trusted_proxies(request: Request, data: TrustedProxyConfigRequest):
+    """Update trusted reverse proxy IPs/CIDRs (for X-Forwarded-For validation)."""
+    require_authenticated(request)
+    import ipaddress
+
+    normalized: List[str] = []
+    seen = set()
+    for raw in data.trusted_proxy_ips or []:
+        value = str(raw).strip()
+        if not value:
+            continue
+        try:
+            net = ipaddress.ip_network(value, strict=False)
+            canon = str(net)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid IP/CIDR: {value}")
+        if canon not in seen:
+            seen.add(canon)
+            normalized.append(canon)
+
+    config_manager = get_config_manager()
+    config = config_manager.load_config()
+    if "security" not in config or not isinstance(config.get("security"), dict):
+        config["security"] = {}
+    config["security"]["trusted_proxy_ips"] = normalized
+    config_manager._config = config
+    config_manager.save_config()
+
+    # Audit
+    try:
+        audit_log = get_audit_log()
+        username = request.session.get("username", "unknown")
+        audit_log.log(
+            action=AuditAction.TRUSTED_PROXY_UPDATE,
+            username=username,
+            request=request,
+            success=True,
+            details={"trusted_proxy_ips": normalized},
+        )
+    except Exception:
+        pass
+
+    return TrustedProxyConfigResponse(trusted_proxy_ips=normalized)
 
 
 @app.post("/api/v1/security/ip-access-control/whitelist/add")

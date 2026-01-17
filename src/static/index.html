@@ -225,6 +225,20 @@
                     <div id="blacklistIpsList" style="margin-top: 10px;"></div>
                 </div>
             </div>
+
+            <!-- Trusted Proxy IPs Section -->
+            <div class="config-section" style="border: 1px solid #ddd; padding: 20px; margin-top: 20px; border-radius: 4px;">
+                <h3>Trusted Reverse Proxies</h3>
+                <p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">
+                    These IPs/CIDRs are allowed to set <code>X-Forwarded-For</code>. Add your HAProxy IP here (e.g. <code>192.168.123.10/32</code>).
+                </p>
+                <textarea id="trustedProxyIpsInput" rows="4" placeholder="One per line (IP or CIDR)\n192.168.123.10/32\n10.0.0.0/24" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace;"></textarea>
+                <div style="margin-top: 10px; display: flex; gap: 10px; align-items: center;">
+                    <button id="saveTrustedProxyIpsBtn" class="btn btn-primary" onclick="saveTrustedProxyIps()">Save Trusted Proxies</button>
+                    <button id="reloadTrustedProxyIpsBtn" class="btn btn-secondary" onclick="loadTrustedProxyIps()">Reload</button>
+                </div>
+                <div id="trustedProxyIpsStatus" style="margin-top: 10px; color: #666; font-size: 0.9em;"></div>
+            </div>
             
             <!-- SMTP Email Notifications Section -->
             <div class="config-section" style="border: 1px solid #ddd; padding: 20px; margin-top: 20px; border-radius: 4px;">

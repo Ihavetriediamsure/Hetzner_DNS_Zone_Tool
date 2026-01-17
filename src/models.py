@@ -182,6 +182,16 @@ class SecurityConfigResponse(BaseModel):
     ip_access_control: IPAccessControlResponse
 
 
+class TrustedProxyConfigResponse(BaseModel):
+    """Trusted reverse proxy configuration (for X-Forwarded-For validation)."""
+    trusted_proxy_ips: List[str]
+
+
+class TrustedProxyConfigRequest(BaseModel):
+    """Update trusted reverse proxy IPs/CIDRs."""
+    trusted_proxy_ips: List[str]
+
+
 class SMTPConfigResponse(BaseModel):
     """SMTP Configuration Response"""
     enabled: bool

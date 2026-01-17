@@ -2714,6 +2714,9 @@ async function loadSecurityConfig() {
         
         // Load IP access control
         await loadIPAccessControl();
+
+        // Load trusted reverse proxies
+        await loadTrustedProxyIps();
         
         // Load brute-force protection config
         await loadBruteForceConfig();
@@ -2728,6 +2731,69 @@ async function loadSecurityConfig() {
     } catch (error) {
         console.error('Error loading security config:', error);
         showToast('Error loading security configuration', 'error');
+    }
+}
+
+// Trusted Proxy IPs (X-Forwarded-For) Functions
+async function loadTrustedProxyIps() {
+    const textarea = document.getElementById('trustedProxyIpsInput');
+    const statusDiv = document.getElementById('trustedProxyIpsStatus');
+    if (statusDiv) statusDiv.textContent = 'Loading...';
+    try {
+        const response = await secureFetch('/api/v1/security/trusted-proxies');
+        if (!response.ok) {
+            throw new Error('Failed to load trusted proxies');
+        }
+        const data = await response.json();
+        const ips = Array.isArray(data.trusted_proxy_ips) ? data.trusted_proxy_ips : [];
+        if (textarea) {
+            textarea.value = ips.join('\n');
+        }
+        if (statusDiv) {
+            statusDiv.textContent = ips.length ? `Loaded ${ips.length} trusted proxy entries.` : 'No trusted proxies configured (X-Forwarded-For will not be trusted).';
+        }
+    } catch (error) {
+        console.error('Error loading trusted proxies:', error);
+        if (statusDiv) statusDiv.textContent = 'Error loading trusted proxies.';
+    }
+}
+
+async function saveTrustedProxyIps() {
+    const textarea = document.getElementById('trustedProxyIpsInput');
+    const statusDiv = document.getElementById('trustedProxyIpsStatus');
+    const raw = textarea ? textarea.value : '';
+    // Split by newline or comma, trim, drop empty
+    const entries = raw
+        .split(/[\n,]/g)
+        .map(s => s.trim())
+        .filter(Boolean);
+
+    try {
+        const response = await secureFetch('/api/v1/security/trusted-proxies', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ trusted_proxy_ips: entries })
+        });
+
+        let data;
+        try {
+            data = await response.json();
+        } catch (e) {
+            data = { detail: response.statusText || 'Unknown error' };
+        }
+
+        if (response.ok) {
+            showToast('Trusted proxies saved', 'success');
+            // Reload to show normalized CIDRs
+            await loadTrustedProxyIps();
+        } else {
+            showToast(data.detail || 'Error saving trusted proxies', 'error');
+            if (statusDiv) statusDiv.textContent = data.detail || 'Error saving trusted proxies.';
+        }
+    } catch (error) {
+        console.error('Error saving trusted proxies:', error);
+        showToast('Error saving trusted proxies: ' + error.message, 'error');
+        if (statusDiv) statusDiv.textContent = 'Error saving trusted proxies.';
     }
 }
 
