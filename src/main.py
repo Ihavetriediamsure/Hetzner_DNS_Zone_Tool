@@ -265,43 +265,17 @@ limiter = Limiter(key_func=get_client_ip_for_rate_limit)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Session middleware - Load secret from config file (for Docker) or environment variable
+# Load config for middleware setup
 config_manager = get_config_manager()
-session_secret = config_manager.get_session_secret()
-
-# Get session timeout from config (default: 1 hour = 3600 seconds)
 config = config_manager.load_config()
 security_config = config.get('security', {})
-session_timeout = security_config.get('session_timeout_seconds', 3600)  # Default: 1 hour
-
-# Check if SSL/HTTPS is enabled
 server_config = config.get('server', {})
 ssl_enabled = server_config.get('ssl_enabled', False)
-
-# IMPORTANT: In FastAPI, app.add_middleware() executes BEFORE @app.middleware("http") decorators
-# Middleware order matters: SessionMiddleware -> CSRFMiddleware -> security_middleware
-# Note: https_only should be False if behind a reverse proxy that terminates SSL
-# The proxy should set X-Forwarded-Proto header, but we use https_only based on SSL config
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=session_secret,
-    max_age=session_timeout,
-    same_site="lax",
-    https_only=ssl_enabled,  # Set to True if SSL is enabled (security requirement)
-    # SECURITY: https_only=True ensures session cookies are only sent over HTTPS
-    # This prevents session hijacking via man-in-the-middle attacks
-    # The session invalidation issue is addressed by skipping session refresh
-    # for peer-sync endpoints in security_middleware
-)
 
 # CSRF Protection using Double-Submit Cookie Pattern
-# This is more robust than session-based CSRF as it doesn't depend on session persistence
+# IMPORTANT: Starlette middleware execution order is effectively reversed (last added runs first).
+# We want SessionMiddleware to run BEFORE CSRFMiddleware so request.session is available for CSRF enforcement.
 from src.csrf import CSRFMiddleware
-# Check if we're behind SSL proxy or SSL is enabled (for secure cookies)
-config = get_config_manager().load_config()
-security_config = config.get('security', {})
-server_config = config.get('server', {})
-ssl_enabled = server_config.get('ssl_enabled', False)
 use_secure_cookies = security_config.get('use_secure_cookies', False) or ssl_enabled  # Auto-enable if SSL is enabled
 
 # Define paths to skip CSRF validation
@@ -321,7 +295,27 @@ csrf_skip_paths = [
 app.add_middleware(
     CSRFMiddleware,
     secure_cookies=use_secure_cookies,
-    skip_paths=csrf_skip_paths
+    skip_paths=csrf_skip_paths,
+)
+
+# Session middleware - Load secret from config file (for Docker) or environment variable
+session_secret = config_manager.get_session_secret()
+
+# Get session timeout from config (default: 1 hour = 3600 seconds)
+session_timeout = security_config.get('session_timeout_seconds', 3600)  # Default: 1 hour
+
+# IMPORTANT: In FastAPI/Starlette, app.add_middleware() executes BEFORE @app.middleware("http") decorators.
+# Also note: last added middleware runs first. SessionMiddleware must be added AFTER CSRFMiddleware.
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=session_secret,
+    max_age=session_timeout,
+    same_site="lax",
+    https_only=ssl_enabled,  # Set to True if SSL is enabled (security requirement)
+    # SECURITY: https_only=True ensures session cookies are only sent over HTTPS
+    # This prevents session hijacking via man-in-the-middle attacks
+    # The session invalidation issue is addressed by skipping session refresh
+    # for peer-sync endpoints in security_middleware
 )
 
 # CSRF Protection - Helper function to get token (for HTML injection)

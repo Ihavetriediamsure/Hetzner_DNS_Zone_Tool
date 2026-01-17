@@ -41,6 +41,9 @@ tests/
 *.bak
 *.tmp
 
+# Local dev/test state (must not be part of build context)
+.local-config/
+
 # Sensitive files - NEVER include in image
 config/
 *.yaml
