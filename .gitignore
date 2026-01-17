@@ -29,6 +29,9 @@ env/
 # Local dev/test artifacts
 .local-config/
 .venv-secscan/
+.venv-audit/
+.peer1-config/
+.peer2-config/
 
 # IDE
 .vscode/

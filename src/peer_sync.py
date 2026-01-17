@@ -49,13 +49,9 @@ def normalize_peer_url(peer: str, default_port: int = 8412) -> str:
         Full URL with schema (http:// or https://)
     """
     peer = peer.strip()
-    
-    # If already a full URL (contains ://), return as-is
-    if '://' in peer:
-        return peer
-    
-    # Check if SSL is enabled to determine default protocol
-    # If SSL is enabled, always use HTTPS (regardless of port)
+
+    # Check if SSL is enabled to determine protocol handling.
+    # If SSL is enabled, peers should be reached via HTTPS.
     try:
         from src.config_manager import get_config_manager
         config_manager = get_config_manager()
@@ -63,13 +59,18 @@ def normalize_peer_url(peer: str, default_port: int = 8412) -> str:
         server_config = config.get('server', {})
         ssl_enabled = server_config.get('ssl_enabled', False)
         
-        # If SSL is enabled, use HTTPS (port can be 8412 on host, but protocol is HTTPS)
-        if ssl_enabled:
-            protocol = "https"
-        else:
-            protocol = "http"
+        # If user configured a full URL, still enforce HTTPS when local SSL is enabled.
+        # This prevents a common misconfiguration where peers remain set to http:// after enabling SSL.
+        if '://' in peer:
+            if ssl_enabled and peer.lower().startswith("http://"):
+                return "https://" + peer.split("://", 1)[1]
+            return peer
+
+        protocol = "https" if ssl_enabled else "http"
     except Exception:
         # Fallback to HTTP if config check fails
+        if '://' in peer:
+            return peer
         protocol = "http"
     
     # If contains port (has :), add protocol prefix

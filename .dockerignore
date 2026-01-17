@@ -43,6 +43,8 @@ tests/
 
 # Local dev/test state (must not be part of build context)
 .local-config/
+.peer1-config/
+.peer2-config/
 
 # Sensitive files - NEVER include in image
 config/
