@@ -50,11 +50,15 @@ def is_trusted_proxy(ip: str) -> bool:
             return False
         
         for network in trusted_proxy_ips:
-            if ip_addr in network:
-                return True
+            try:
+                if ip_addr in network:
+                    return True
+            except (ValueError, TypeError):
+                # IPv6 in IPv4Network or other type mismatch: treat as not trusted
+                continue
         
         return False
-    except ValueError:
+    except (ValueError, TypeError):
         return False
 
 

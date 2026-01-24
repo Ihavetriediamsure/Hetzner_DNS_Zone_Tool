@@ -110,8 +110,16 @@ class AuditLog:
             pass
     
     def _get_client_ip(self, request) -> str:
-        """Extract client IP from request (safely validates X-Forwarded-For)"""
+        """Extract client IP from request (safely validates X-Forwarded-For).
+        Uses request.state.client_ip when set by ip_access_control_middleware.
+        """
         from src.ip_utils import get_client_ip_safe
+        try:
+            cached = getattr(request.state, "client_ip", None)
+            if cached is not None:
+                return cached
+        except Exception:
+            pass
         return get_client_ip_safe(request)
     
     def log(

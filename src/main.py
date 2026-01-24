@@ -257,8 +257,17 @@ app = FastAPI(
 # Rate Limiter - Global rate limiting for API endpoints
 # Use secure IP extraction for rate limiting
 def get_client_ip_for_rate_limit(request: Request) -> str:
-    """Get client IP for rate limiting using secure extraction"""
+    """Get client IP for rate limiting using secure extraction.
+    Uses request.state.client_ip when set by ip_access_control_middleware to avoid
+    repeated get_client_ip_safe (and its load_config/trusted_proxy work) in the same request.
+    """
     from src.ip_utils import get_client_ip_safe
+    try:
+        cached = getattr(request.state, "client_ip", None)
+        if cached is not None:
+            return cached
+    except Exception:
+        pass
     return get_client_ip_safe(request)
 
 limiter = Limiter(key_func=get_client_ip_for_rate_limit)
@@ -405,9 +414,17 @@ async def ip_access_control_middleware(request: Request, call_next):
     if request.url.path.startswith("/static/"):
         return await call_next(request)
     
-    # Get client IP safely (validates X-Forwarded-For header)
+    # Get client IP safely (validates X-Forwarded-For header).
+    # Run in executor to avoid blocking the event loop: get_client_ip_safe calls load_config()
+    # and is_trusted_proxy(); with trusted_proxy_ips set that can block long enough to cause
+    # timeouts (e.g. HTTPS POST /api/v1/auth/login). Offloading to a thread avoids blocking.
     from src.ip_utils import get_client_ip_safe
-    client_ip = get_client_ip_safe(request)
+    loop = asyncio.get_running_loop()
+    client_ip = await loop.run_in_executor(None, lambda: get_client_ip_safe(request))
+    try:
+        request.state.client_ip = client_ip
+    except Exception:
+        pass
     
     # Get fail mode from config
     config = get_config_manager()
@@ -828,9 +845,11 @@ async def login(request: Request, login_data: LoginRequest):
     brute_force = get_brute_force_protection()
     audit_log = get_audit_log()
     
-    # Get client IP safely (validates X-Forwarded-For header)
+    # Get client IP safely (validates X-Forwarded-For header).
+    # Run in executor to avoid blocking when trusted_proxy_ips is set (see ip_access_control_middleware).
     from src.ip_utils import get_client_ip_safe
-    client_ip = get_client_ip_safe(request)
+    loop = asyncio.get_running_loop()
+    client_ip = await loop.run_in_executor(None, lambda: get_client_ip_safe(request))
     
     # Check brute-force protection for login
     allowed, error_msg = brute_force.check_login_allowed(client_ip, login_data.username)
