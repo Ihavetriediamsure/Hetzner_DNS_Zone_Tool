@@ -559,7 +559,7 @@ class PeerSync:
             logger.warning(f"Timeout pulling config from peer {peer_ip}")
             return None
         except Exception as e:
-            logger.error(f"Error pulling config from peer {peer}: {e}")
+            logger.exception(f"Error pulling config from peer {peer}: {repr(e)}")
             return None
     
     async def find_newest_config_peer(self) -> Optional[Dict[str, Any]]:
@@ -621,7 +621,7 @@ class PeerSync:
                         }
                 return None
             except Exception as e:
-                logger.debug(f"Peer {peer_ip} not reachable: {e}")
+                logger.debug(f"Peer {peer_ip} not reachable: {repr(e)}")
                 return None
         
         # Check all peers in parallel
@@ -796,7 +796,8 @@ class PeerSync:
                         "response_time_ms": response_time_ms
                     }
             except Exception as e:
-                logger.error(f"Error syncing with peer {peer}: {e}")
+                # Some httpx/SSL exceptions stringify to empty; keep full context.
+                logger.exception(f"Error syncing with peer {peer}: {repr(e)}")
                 return {
                     "peer": peer,
                     "peer_name": self.peer_names.get(peer_ip, peer_ip),

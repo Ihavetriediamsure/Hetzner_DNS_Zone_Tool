@@ -3615,12 +3615,20 @@ async def receive_sync_local_ips(request: Request):
         # Use provided public key or cached one
         if peer_public_key_b64:
             try:
-                peer_public_key_bytes = base64.b64decode(peer_public_key_b64)
-                from cryptography.hazmat.primitives import serialization
                 from cryptography.hazmat.primitives.asymmetric import x25519
-                peer_x25519_pub = serialization.load_pem_public_key(peer_public_key_bytes)
-                if not isinstance(peer_x25519_pub, x25519.X25519PublicKey):
-                    raise ValueError("Invalid X25519 public key type")
+                peer_public_key_bytes = base64.b64decode(peer_public_key_b64)
+
+                # Preferred wire format: raw 32 bytes (WireGuard/X25519)
+                if len(peer_public_key_bytes) == 32:
+                    peer_x25519_pub = x25519.X25519PublicKey.from_public_bytes(peer_public_key_bytes)
+                else:
+                    # Backwards-compat: allow PEM bytes (base64-wrapped) for migration
+                    from cryptography.hazmat.primitives import serialization
+
+                    loaded_pub = serialization.load_pem_public_key(peer_public_key_bytes)
+                    if not isinstance(loaded_pub, x25519.X25519PublicKey):
+                        raise ValueError("Invalid X25519 public key type")
+                    peer_x25519_pub = loaded_pub
             except Exception as e:
                 logger.warning(f"Failed to decode peer public key: {e}")
                 # Use cached public key from verify_peer_signature
