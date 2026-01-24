@@ -185,8 +185,7 @@ class AuditLog:
             from src.smtp_notifier import get_smtp_notifier
             smtp_notifier = get_smtp_notifier()
             if smtp_notifier.is_event_enabled(action.value):
-                # Send email in background (don't block logging)
-                import threading
+                # Send email in background (don't block logging); threading bereits oben importiert
                 email_thread = threading.Thread(
                     target=smtp_notifier.send_notification,
                     args=(action.value, log_entry),
