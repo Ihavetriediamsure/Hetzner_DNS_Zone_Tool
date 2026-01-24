@@ -257,18 +257,17 @@ app = FastAPI(
 # Rate Limiter - Global rate limiting for API endpoints
 # Use secure IP extraction for rate limiting
 def get_client_ip_for_rate_limit(request: Request) -> str:
-    """Get client IP for rate limiting using secure extraction.
-    Uses request.state.client_ip when set by ip_access_control_middleware to avoid
-    repeated get_client_ip_safe (and its load_config/trusted_proxy work) in the same request.
+    """Get client IP for rate limiting. Immer schnell, nie get_client_ip_safe/load_config.
+    get_client_ip_safe kann (load_config, get_trusted_proxy_ips) blockieren und hat bei
+    nicht-leeren trusted_proxy_ips zu Timeouts im Limiter geführt.
     """
-    from src.ip_utils import get_client_ip_safe
     try:
         cached = getattr(request.state, "client_ip", None)
-        if cached is not None:
+        if cached:
             return cached
     except Exception:
         pass
-    return get_client_ip_safe(request)
+    return (request.client.host if request.client else None) or "127.0.0.1"
 
 limiter = Limiter(key_func=get_client_ip_for_rate_limit)
 app.state.limiter = limiter
@@ -414,46 +413,56 @@ async def ip_access_control_middleware(request: Request, call_next):
     if request.url.path.startswith("/static/"):
         return await call_next(request)
     
-    # Get client IP safely (validates X-Forwarded-For header).
-    # Run in executor to avoid blocking the event loop: get_client_ip_safe calls load_config()
-    # and is_trusted_proxy(); with trusted_proxy_ips set that can block long enough to cause
-    # timeouts (e.g. HTTPS POST /api/v1/auth/login). Offloading to a thread avoids blocking.
+    # For /api/v1/auth/login: set client_ip from request.client so the rate limiter does not
+    # call get_client_ip_safe (which does load_config/get_trusted_proxy and can block with
+    # trusted_proxy_ips set). IP whitelist is not applied to login.
+    if request.url.path == "/api/v1/auth/login":
+        try:
+            request.state.client_ip = request.client.host if request.client else "127.0.0.1"
+        except Exception:
+            request.state.client_ip = "127.0.0.1"
+        return await call_next(request)
+    
+    # Run all sync/blocking work in a thread: get_client_ip_safe, load_config, get_ip_access_control,
+    # is_ip_allowed. All of these can block the event loop; with trusted_proxy_ips set that caused
+    # timeouts (e.g. HTTPS POST /api/v1/auth/login). Offloading avoids blocking.
     from src.ip_utils import get_client_ip_safe
+
+    def _ip_check_sync():
+        client_ip = get_client_ip_safe(request)
+        config = get_config_manager()
+        cfg = config.load_config()
+        security = cfg.get('security', {})
+        fail_mode = security.get('ip_access_control_fail_mode', 'close')
+        try:
+            ip_access = get_ip_access_control()
+            allowed = ip_access.is_ip_allowed(client_ip)
+            return (client_ip, fail_mode, "allow" if allowed else "deny_403", None)
+        except Exception as e:
+            return (client_ip, fail_mode, "error", e)
+
     loop = asyncio.get_running_loop()
-    client_ip = await loop.run_in_executor(None, lambda: get_client_ip_safe(request))
+    client_ip, fail_mode, decision, exc = await loop.run_in_executor(None, _ip_check_sync)
     try:
         request.state.client_ip = client_ip
     except Exception:
         pass
-    
-    # Get fail mode from config
-    config = get_config_manager()
-    cfg = config.load_config()
-    security = cfg.get('security', {})
-    fail_mode = security.get('ip_access_control_fail_mode', 'close')  # Default: fail-close
-    
-    # Check IP access control
-    try:
-        ip_access = get_ip_access_control()
-        if not ip_access.is_ip_allowed(client_ip):
-            return JSONResponse(
-                status_code=403,
-                content={"error": "Access denied", "message": f"IP {client_ip} is not allowed"}
-            )
-    except Exception as e:
-        logger.error(f"Error checking IP access control: {e}")
-        # Fail-close by default (deny access on error)
+
+    if decision == "deny_403":
+        return JSONResponse(
+            status_code=403,
+            content={"error": "Access denied", "message": f"IP {client_ip} is not allowed"}
+        )
+    if decision == "error":
+        logger.error(f"Error checking IP access control: {exc}")
         if fail_mode == 'open':
-            # Fail-open mode: allow access on error (less secure, but more permissive)
             logger.warning("IP access control error - allowing access (fail-open mode)")
         else:
-            # Fail-close mode: deny access on error (more secure, default)
-            logger.error("IP access control error - denying access (fail-close mode)")
             return JSONResponse(
                 status_code=500,
                 content={"error": "Internal server error", "message": "IP access control check failed"}
             )
-    
+
     return await call_next(request)
 
 # Mount static files
@@ -837,51 +846,80 @@ async def test_api_tokens(request: Request):
     return {"error": "This endpoint is deprecated. Use the new token system instead."}, 400
 
 
+def _login_sync_get_deps(client_ip: str, username: str, password: str):
+    """Sync: get_auth_manager, get_brute_force_protection, get_audit_log, check_login_allowed, verify_password.
+    Ausführung im Executor, damit load_config/get_ip_access_control/verify_password die Event-Loop nicht blockieren."""
+    auth = get_auth_manager()
+    brute = get_brute_force_protection()
+    audit = get_audit_log()
+    allowed, err = brute.check_login_allowed(client_ip, username)
+    if not allowed:
+        return ("deny", auth, brute, audit, err, None)
+    pw_ok = auth.verify_password(username, password)
+    return ("pwd", auth, brute, audit, err, pw_ok)
+
+
+def _login_deny_log(audit_log, username: str, client_ip: str, error_msg: str) -> None:
+    """Nur audit_log.log für Brute-Force-Deny. audit_log.log schreibt in Thread → blockiert nicht."""
+    audit_log.log(
+        action=AuditAction.LOGIN_FAILURE,
+        username=username,
+        ip=client_ip,
+        request=None,
+        success=False,
+        error=error_msg,
+    )
+
+
+def _login_fail_log(brute_force, audit_log, client_ip: str, username: str) -> None:
+    """record_login_failure + audit_log.log. audit_log.log schreibt in Thread → blockiert nicht."""
+    brute_force.record_login_failure(client_ip, username)
+    audit_log.log(
+        action=AuditAction.LOGIN_FAILURE,
+        username=username,
+        ip=client_ip,
+        request=None,
+        success=False,
+        error="Invalid password",
+    )
+
+
 @app.post("/api/v1/auth/login", response_model=LoginResponse)
 @limiter.limit("10/minute")
 async def login(request: Request, login_data: LoginRequest):
     """Login endpoint"""
-    auth_manager = get_auth_manager()
-    brute_force = get_brute_force_protection()
-    audit_log = get_audit_log()
-    
-    # Get client IP safely (validates X-Forwarded-For header).
-    # Run in executor to avoid blocking when trusted_proxy_ips is set (see ip_access_control_middleware).
-    from src.ip_utils import get_client_ip_safe
+    # Get client IP: use request.state.client_ip if set (by ip_access_control_middleware for /api/v1/auth/login),
+    # otherwise get_client_ip_safe in executor to avoid blocking when trusted_proxy_ips is set.
+    try:
+        client_ip = getattr(request.state, "client_ip", None)
+    except Exception:
+        client_ip = None
+    if not client_ip:
+        from src.ip_utils import get_client_ip_safe
+        loop = asyncio.get_running_loop()
+        client_ip = await loop.run_in_executor(None, lambda: get_client_ip_safe(request))
+
+    # get_auth_manager, get_brute_force_protection, get_audit_log, check_login_allowed, verify_password können
+    # load_config / get_ip_access_control / Auth-Datei / bcrypt aufrufen und blockieren. Im Executor ausführen.
     loop = asyncio.get_running_loop()
-    client_ip = await loop.run_in_executor(None, lambda: get_client_ip_safe(request))
-    
+    try:
+        kind, auth_manager, brute_force, audit_log, error_msg, pw_ok = await asyncio.wait_for(
+            loop.run_in_executor(None, lambda: _login_sync_get_deps(client_ip, login_data.username, login_data.password)),
+            timeout=10.0
+        )
+    except asyncio.TimeoutError:
+        logger.warning("Login handler: _login_sync_get_deps timed out (load_config/auth/bcrypt blockiert?)")
+        return LoginResponse(success=False, message="Login-Check konnte nicht in Zeit durchgeführt werden. Bitte erneut versuchen.")
+
     # Check brute-force protection for login
-    allowed, error_msg = brute_force.check_login_allowed(client_ip, login_data.username)
-    if not allowed:
-        audit_log.log(
-            action=AuditAction.LOGIN_FAILURE,
-            username=login_data.username,
-            ip=client_ip,
-            request=request,
-            success=False,
-            error=error_msg
-        )
-        return LoginResponse(
-            success=False,
-            message=error_msg
-        )
-    
-    # Verify password
-    if not auth_manager.verify_password(login_data.username, login_data.password):
-        brute_force.record_login_failure(client_ip, login_data.username)
-        audit_log.log(
-            action=AuditAction.LOGIN_FAILURE,
-            username=login_data.username,
-            ip=client_ip,
-            request=request,
-            success=False,
-            error="Invalid password"
-        )
-        return LoginResponse(
-            success=False,
-            message="Invalid username or password"
-        )
+    if kind == "deny":
+        _login_deny_log(audit_log, login_data.username, client_ip, error_msg)
+        return LoginResponse(success=False, message=error_msg)
+
+    # Verify password (bereits im Executor ausgeführt, pw_ok ist das Ergebnis)
+    if not pw_ok:
+        _login_fail_log(brute_force, audit_log, client_ip, login_data.username)
+        return LoginResponse(success=False, message="Invalid username or password")
     
     # Check if 2FA is enabled
     if auth_manager.is_2fa_enabled(login_data.username):

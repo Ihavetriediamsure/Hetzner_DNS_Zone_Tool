@@ -10,15 +10,18 @@ logger = logging.getLogger(__name__)
 
 
 def get_trusted_proxy_ips() -> List[ipaddress.IPv4Network | ipaddress.IPv6Network]:
-    """Get list of trusted proxy IPs from configuration"""
+    """Get list of trusted proxy IPs from configuration.
+    Fehlender oder ungültiger Wert (kein Key, None, keine Liste) = automatisch aus (leere Liste)."""
     try:
         config = get_config_manager()
         cfg = config.load_config()
         security = cfg.get('security', {})
-        trusted_proxy_ips_raw = security.get('trusted_proxy_ips', [])
-        
+        raw = security.get('trusted_proxy_ips')
+        if raw is None or not isinstance(raw, list):
+            raw = []
+
         trusted_proxy_ips = []
-        for ip_or_cidr in trusted_proxy_ips_raw:
+        for ip_or_cidr in raw:
             try:
                 if '/' in ip_or_cidr:
                     trusted_proxy_ips.append(ipaddress.ip_network(ip_or_cidr, strict=False))

@@ -42,6 +42,7 @@ class ConfigManager:
             # Run migrations on first load
             self._migrate_old_tokens()
             self._migrate_ssl_config()
+            self._migrate_trusted_proxy_ips()
             self._migrations_run = True
         
         return self._config
@@ -246,6 +247,24 @@ class ConfigManager:
             self.save_config()
             logger.info("Config migration: SSL settings migrated successfully")
     
+    def _migrate_trusted_proxy_ips(self) -> None:
+        """Migrate trusted_proxy_ips: Add empty list under security if missing.
+        Kein Key = Trust-IP-Auswertung aus. Mit Migration ist die Struktur explizit."""
+        config = self._config if self._config is not None else {}
+        changed = False
+
+        if 'security' not in config:
+            config['security'] = {}
+
+        if 'trusted_proxy_ips' not in config['security']:
+            config['security']['trusted_proxy_ips'] = []
+            changed = True
+            logger.info("Config migration: Added trusted_proxy_ips=[] (Trust-IP feature off by default)")
+
+        if changed:
+            self._config = config
+            self.save_config()
+
     def _migrate_old_tokens(self) -> None:
         """Migrate old token structure to new multi-token structure"""
         config = self._config if self._config is not None else {}

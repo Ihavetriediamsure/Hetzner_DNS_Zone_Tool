@@ -165,19 +165,21 @@ class AuditLog:
         
         if error:
             log_entry["error"] = error
-        
-        # Write to log file (append mode)
-        with self._lock:
-            try:
-                # Check if rotation is needed before writing
-                self._check_and_rotate()
-                
-                with open(self.log_file, 'a', encoding='utf-8') as f:
-                    f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
-            except Exception as e:
-                # Silently fail to avoid breaking the application
-                logging.getLogger(__name__).error(f"Failed to write audit log: {e}")
-        
+
+        # Schreiben in separatem Thread, damit Lock + _check_and_rotate + I/O
+        # die Event-Loop bzw. Request-Handler nicht blockieren (verursachte Login-Timeout).
+        def _write_log_entry_sync(entry: dict) -> None:
+            with self._lock:
+                try:
+                    self._check_and_rotate()
+                    with open(self.log_file, 'a', encoding='utf-8') as f:
+                        f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+                except Exception as e:
+                    logging.getLogger(__name__).error(f"Failed to write audit log: {e}")
+
+        _write_thread = threading.Thread(target=_write_log_entry_sync, args=(log_entry,), daemon=True)
+        _write_thread.start()
+
         # Send email notification if configured
         try:
             from src.smtp_notifier import get_smtp_notifier
