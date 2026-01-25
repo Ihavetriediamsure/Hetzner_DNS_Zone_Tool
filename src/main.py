@@ -69,8 +69,9 @@ import hashlib
 import json
 
 # Configure logging
+log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, log_level, logging.INFO),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -3313,13 +3314,23 @@ async def get_peer_sync_status(request: Request):
                 elif event.get("status") == "error" and not last_error:
                     last_error = event.get("timestamp")
         
+        duration_values = [
+            event.get("duration_ms", 0)
+            for event in status.get("recent_events", [])
+            if event.get("duration_ms")
+        ]
+        average_duration = round(sum(duration_values) / len(duration_values), 2) if duration_values else 0
+
+        from src.local_ip_storage import get_local_ip_storage
+        local_generation = get_local_ip_storage()._load_storage().get("generation", {})
+
         overview = {
             "last_sync": last_sync,
             "last_error": last_error,
             "overall_status": "success" if not last_error or (last_sync and last_sync > last_error) else "error",
             "total_successful_syncs": total_success,
             "total_failed_syncs": total_fail,
-            "average_sync_duration_ms": 0,  # TODO: Calculate from events
+            "average_sync_duration_ms": average_duration,
             "overall_success_rate": round(success_rate, 2)
         }
         
@@ -3349,7 +3360,7 @@ async def get_peer_sync_status(request: Request):
                 "average_response_time_ms": round(peer_stat.get("avg_response_time_ms", 0), 2),
                 "total_retries": peer_stat.get("total_retries", 0),
                 "rate_limit_violations": peer_stat.get("rate_limit_violations", 0),
-                "generation": {},  # TODO: Get from storage
+                "generation": local_generation,
                 "error": last_event.get("details") if last_event and last_event.get("status") == "error" else None
             })
         
@@ -3376,8 +3387,18 @@ async def trigger_peer_sync(request: Request, sync_request: PeerSyncSyncNowReque
     peer_sync = get_peer_sync()
     
     try:
-        # TODO: Implement single-peer sync if peer is specified
+        target_peer = sync_request.peer if sync_request else None
+        original_peers = None
+        if target_peer:
+            if target_peer not in peer_sync._peer_nodes:
+                raise HTTPException(status_code=400, detail="Peer not configured")
+            original_peers = list(peer_sync._peer_nodes)
+            peer_sync._peer_nodes = [target_peer]
+
         result = await peer_sync.sync_with_all_peers()
+    finally:
+        if 'original_peers' in locals() and original_peers is not None:
+            peer_sync._peer_nodes = original_peers
         
         audit_log.log(
             action=AuditAction.PEER_SYNC_MANUAL_TRIGGER,

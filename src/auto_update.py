@@ -20,6 +20,7 @@ class AutoUpdateService:
         self.config_path = Path(config_path)
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
         self._enabled = False
+        self._running = False
         self._last_update: Optional[str] = None
         self._next_update: Optional[str] = None
     
@@ -51,6 +52,8 @@ class AutoUpdateService:
         
         if not config.get("enabled", False):
             return {"updated": 0, "skipped": 0, "errors": []}
+
+        self._running = True
         
         records = config.get("records", [])
         updated = 0
@@ -109,6 +112,7 @@ class AutoUpdateService:
         
         finally:
             await client.close()
+            self._running = False
         
         self._last_update = datetime.now().isoformat()
         interval_minutes = config.get("interval_minutes", 15)
@@ -127,7 +131,7 @@ class AutoUpdateService:
         config = self._load_config()
         return {
             "enabled": config.get("enabled", False),
-            "running": False,  # TODO: Track running state
+            "running": self._running,
             "last_update": self._last_update,
             "next_update": self._next_update,
             "records_count": len(config.get("records", []))
@@ -146,4 +150,3 @@ def get_auto_update_service(config_path: Optional[str] = None) -> AutoUpdateServ
             config_path = os.getenv("AUTO_UPDATE_CONFIG_PATH", "./config/auto_update.yaml")
         _auto_update_service = AutoUpdateService(config_path)
     return _auto_update_service
-

@@ -17,6 +17,8 @@ services:
       - ALL
     tmpfs:
       - /tmp
+    environment:
+      - LOG_LEVEL=INFO
     
     ports:
       # Map container port 443 (HTTPS) to host port 8412
