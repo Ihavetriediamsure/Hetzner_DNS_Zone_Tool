@@ -1907,14 +1907,10 @@ async def update_rrset(zone_id: str, rrset_id: str, request: UpdateRRSetRequest,
     """Update an RRSet"""
     require_authenticated(http_request)
     try:
-        # URL encode rrset_id for API call
-        import urllib.parse
-        encoded_rrset_id = urllib.parse.quote(rrset_id, safe='')
-        
         client = HetznerDNSClient(token_id=token_id)
         try:
-            # Get current RRSet to preserve values if not provided
-            current_rrset = await client.get_rrset(zone_id, encoded_rrset_id)
+            # Get current RRSet to preserve values if not provided (hetzner_dns_api encodiert rrset_id selbst)
+            current_rrset = await client.get_rrset(zone_id, rrset_id)
             
             # Use provided name/type or keep current ones
             new_name = request.name if request.name is not None else current_rrset.name
@@ -1929,7 +1925,7 @@ async def update_rrset(zone_id: str, rrset_id: str, request: UpdateRRSetRequest,
                     raise HTTPException(status_code=400, detail="TTL muss einer der erlaubten Werte sein: 60, 300, 600, 1800, 3600, 86400 Sekunden")
                 
                 # Delete old RRSet
-                await client.delete_rrset(zone_id, encoded_rrset_id)
+                await client.delete_rrset(zone_id, rrset_id)
                 
                 # Create new RRSet with new name/type
                 updated_rrset = await client.create_or_update_rrset(

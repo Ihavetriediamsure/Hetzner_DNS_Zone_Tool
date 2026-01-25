@@ -507,7 +507,7 @@ class ConfigManager:
                 'port': 8000,
                 'machine_name': '',  # Machine name for email notifications (e.g. "my server")
                 'session_secret': '',  # Session secret for cookies (if empty, uses SESSION_SECRET env var or generates default)
-                'ssl_enabled': False,  # Enable HTTPS with self-signed certificate
+                'ssl_enabled': True,  # HTTPS with self-signed certificate (Standard)
                 'ssl_port': 443,  # HTTPS port (default: 443)
                 'ssl_cert_path': '',  # Path to SSL certificate (auto-generated if empty)
                 'ssl_key_path': ''  # Path to SSL private key (auto-generated if empty)
