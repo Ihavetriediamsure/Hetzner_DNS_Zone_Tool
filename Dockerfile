@@ -55,5 +55,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Run the application
 # Use custom startup script that handles SSL configuration
-USER app
 CMD ["python", "src/start_server.py"]

@@ -9,7 +9,6 @@ services:
     # Automatically restart container if it stops
     restart: unless-stopped
 
-    user: "1000:1000"
     read_only: true
     security_opt:
       - no-new-privileges:true
