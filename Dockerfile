@@ -31,6 +31,11 @@ RUN find ./src -type f -name "*.pyc" -delete 2>/dev/null || true
 # Create config directory
 RUN mkdir -p /config && chmod 755 /config
 
+# Create non-root user (uid/gid 1000) and set ownership
+RUN addgroup --gid 1000 app && \
+    adduser --uid 1000 --gid 1000 --disabled-password --gecos "" app && \
+    chown -R app:app /config /app
+
 # Set environment variables
 ENV CONFIG_PATH=/config/config.yaml
 ENV AUTH_FILE=/config/auth.yaml
@@ -38,6 +43,7 @@ ENV ENCRYPTION_KEY_PATH=/config/.encryption_key
 ENV AUDIT_LOG_FILE=/config/audit.log
 ENV LOCAL_IP_STORAGE_PATH=/config/local_ips.yaml
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
 
 # Expose ports
 EXPOSE 8000 443
@@ -49,4 +55,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Run the application
 # Use custom startup script that handles SSL configuration
+USER app
 CMD ["python", "src/start_server.py"]
