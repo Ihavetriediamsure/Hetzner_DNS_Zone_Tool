@@ -2105,36 +2105,36 @@ async function showCreateMXRecordDialog(zoneId, zoneName, tokenId = null) {
     
     dialog.innerHTML = `
         <div style="background: white; padding: 30px; border-radius: 8px; max-width: 500px; width: 90%; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-            <h2 style="margin-top: 0;">Neuer MX-Eintrag</h2>
+            <h2 style="margin-top: 0;">Create New MX Record</h2>
             <p style="color: #666; margin-bottom: 20px;">Zone: ${escapeHtml(zoneName)}</p>
             
             <div style="margin-bottom: 15px;">
                 <label style="display: block; margin-bottom: 5px; font-weight: bold;">Name:</label>
-                <input type="text" id="newMXRecordName" placeholder="z.B. @ oder mail (Leer = Root)" value="@" style="width: 110px; display: inline-block; max-width: 100%; padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px;">
-                <small style="color: #666;">@ oder leer = Root, sonst Subdomain</small>
+                <input type="text" id="newMXRecordName" placeholder="e.g. test or @ for root" value="@" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <small style="color: #666;">Leave empty or @ for root domain</small>
             </div>
             
             <div style="margin-bottom: 15px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: bold;">MX-Einträge:</label>
-                <textarea id="newMXRecords" rows="4" placeholder="10 mail.example.com.&#10;20 mx2.example.com." style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;"></textarea>
-                <small style="color: #666;">Pro Zeile oder kommagetrennt: Priorität Leerzeichen Mail-Server (z.B. 10 mail.example.com.) - Punkt am Ende erforderlich</small>
+                <label style="display: block; margin-bottom: 5px; font-weight: bold;">MX Entry:</label>
+                <input type="text" id="newMXRecords" placeholder="10 mail.example.com." style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <small style="color: #666;">Single MX entry: Priority space mail-server (e.g. 10 mail.example.com.) - dot required at the end</small>
             </div>
             
             <div style="margin-bottom: 20px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: bold;">TTL (Sekunden):</label>
+                <label style="display: block; margin-bottom: 5px; font-weight: bold;">TTL (seconds):</label>
                 <select id="newMXRecordTTL" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                    <option value="3600" selected>3600s</option>
                     <option value="60">60s</option>
                     <option value="300">300s</option>
                     <option value="600">600s</option>
                     <option value="1800">1800s</option>
+                    <option value="3600" selected>3600s</option>
                     <option value="86400">86400s</option>
                 </select>
             </div>
             
             <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                <button onclick="this.closest('.modal-overlay').remove()" class="btn btn-secondary" style="padding: 10px 20px;">Abbrechen</button>
-                <button id="createMXRecordBtn" data-zone-id="${escapeHtml(zoneId)}" data-zone-name="${escapeHtml(zoneName)}" data-token-id="${escapeHtml(tokenId || '')}" class="btn btn-primary" style="padding: 10px 20px;">Erstellen</button>
+                <button onclick="this.closest('.modal-overlay').remove()" class="btn btn-secondary" style="padding: 10px 20px;">Cancel</button>
+                <button id="createMXRecordBtn" data-zone-id="${escapeHtml(zoneId)}" data-zone-name="${escapeHtml(zoneName)}" data-token-id="${escapeHtml(tokenId || '')}" class="btn btn-primary" style="padding: 10px 20px;">Create</button>
             </div>
         </div>
     `;
