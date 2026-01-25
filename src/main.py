@@ -3386,9 +3386,10 @@ async def trigger_peer_sync(request: Request, sync_request: PeerSyncSyncNowReque
     audit_log = get_audit_log()
     peer_sync = get_peer_sync()
     
+    result = None
+    target_peer = sync_request.peer if sync_request else None
+    original_peers = None
     try:
-        target_peer = sync_request.peer if sync_request else None
-        original_peers = None
         if target_peer:
             if target_peer not in peer_sync._peer_nodes:
                 raise HTTPException(status_code=400, detail="Peer not configured")
@@ -3396,27 +3397,6 @@ async def trigger_peer_sync(request: Request, sync_request: PeerSyncSyncNowReque
             peer_sync._peer_nodes = [target_peer]
 
         result = await peer_sync.sync_with_all_peers()
-    finally:
-        if 'original_peers' in locals() and original_peers is not None:
-            peer_sync._peer_nodes = original_peers
-        
-        audit_log.log(
-            action=AuditAction.PEER_SYNC_MANUAL_TRIGGER,
-            username=username,
-            request=request,
-            success=len(result.get("synced_peers", [])) > 0,
-            details={
-                "synced_peers": result.get("synced_peers", []),
-                "failed_peers": result.get("failed_peers", [])
-            }
-        )
-        
-        return {
-            "success": True,
-            "message": f"Sync completed: {len(result.get('synced_peers', []))} peers synced",
-            "synced_peers": result.get("synced_peers", []),
-            "failed_peers": result.get("failed_peers", [])
-        }
     except Exception as e:
         logger.error(f"Error triggering peer-sync: {e}")
         audit_log.log(
@@ -3427,6 +3407,27 @@ async def trigger_peer_sync(request: Request, sync_request: PeerSyncSyncNowReque
             error=str(e)
         )
         raise HTTPException(status_code=500, detail=f"Error triggering peer-sync: {str(e)}")
+    finally:
+        if original_peers is not None:
+            peer_sync._peer_nodes = original_peers
+
+    audit_log.log(
+        action=AuditAction.PEER_SYNC_MANUAL_TRIGGER,
+        username=username,
+        request=request,
+        success=len(result.get("synced_peers", [])) > 0,
+        details={
+            "synced_peers": result.get("synced_peers", []),
+            "failed_peers": result.get("failed_peers", [])
+        }
+    )
+    
+    return {
+        "success": True,
+        "message": f"Sync completed: {len(result.get('synced_peers', []))} peers synced",
+        "synced_peers": result.get("synced_peers", []),
+        "failed_peers": result.get("failed_peers", [])
+    }
 
 
 @app.post("/api/v1/peer-sync/auto-sync")
