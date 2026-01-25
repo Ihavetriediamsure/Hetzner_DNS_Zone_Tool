@@ -102,7 +102,6 @@ function initConfigEventSource() {
     configEventSource = new EventSource('/api/v1/config/events');
     
     configEventSource.onopen = function(event) {
-        console.log('SSE connection established');
     };
     
     configEventSource.onmessage = function(event) {
@@ -110,7 +109,6 @@ function initConfigEventSource() {
             const data = JSON.parse(event.data);
             
             if (data.type === 'connected') {
-                console.log('SSE connected:', data.message);
                 return;
             }
             
@@ -129,7 +127,6 @@ function initConfigEventSource() {
         // Reconnect after 5 seconds
         setTimeout(() => {
             if (configEventSource && configEventSource.readyState === EventSource.CLOSED) {
-                console.log('Reconnecting SSE...');
                 initConfigEventSource();
             }
         }, 5000);
@@ -1912,7 +1909,6 @@ async function showCreateRecordDialog(zoneId, zoneName, tokenId = null) {
             publicIP = ipData.ip || '';
         }
     } catch (error) {
-        console.log('Could not fetch public IP:', error);
     }
     
     dialog.innerHTML = `
@@ -4051,7 +4047,6 @@ async function loadPeerSyncConfig() {
                         }
                     } catch (e) {
                         // If config status fetch fails, continue with null (peer might be online but config status unavailable)
-                        console.debug(`Failed to get config status for peer ${peerAddress}:`, e);
                     }
                 }
                 
@@ -4780,12 +4775,10 @@ async function triggerAutoSyncWithBanner() {
                             showToast('Sync completed with errors', 'warning');
                         } else {
                             // No clear status - sync might still be running, don't show error
-                            console.log('Auto-sync status unclear, sync might still be running');
                         }
                     }
                 } else {
                     // No events at all - sync might still be running
-                    console.log('No sync events found, sync might still be running');
                 }
                 
                 // Status display removed - no need to refresh

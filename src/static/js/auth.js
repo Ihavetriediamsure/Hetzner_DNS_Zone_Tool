@@ -149,7 +149,6 @@ async function checkAuthStatus() {
         }
     } catch (error) {
         // If there's an error, don't block access - allow the page to load
-        console.log('Auth check error:', error);
     }
 }
 
@@ -161,4 +160,3 @@ async function logout() {
         console.error('Logout error:', error);
     }
 }
-
