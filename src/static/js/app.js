@@ -581,17 +581,20 @@ async function loadZoneRRSets(zoneId, zoneName, tokenId = null) {
         const data = await response.json();
         const allRrsets = data.rrsets || [];
         
-        // Filter out NS (Nameserver), SOA, MX, and TXT records - only show A and AAAA
+        // Show A, AAAA and MX records (filter out NS, SOA, TXT, etc.)
         const rrsets = allRrsets.filter(rrset => {
             const type = rrset.type || '';
-            return type === 'A' || type === 'AAAA';
+            return type === 'A' || type === 'AAAA' || type === 'MX';
         });
         
-        // Button to create new A/AAAA records
+        // Buttons to create new records
         let tableHTML = `
             <div style="margin-bottom: 20px;">
-                <button class="btn btn-primary" onclick="showCreateRecordDialog('${zoneId}', '${zoneName}', '${tokenId || ''}')" style="margin-bottom: 10px;">
+                <button class="btn btn-primary" onclick="showCreateRecordDialog('${zoneId}', '${zoneName}', '${tokenId || ''}')" style="margin-right: 10px; margin-bottom: 10px;">
                     + New A/AAAA Record
+                </button>
+                <button class="btn btn-primary" onclick="showCreateMXRecordDialog('${zoneId}', '${zoneName}', '${tokenId || ''}')" style="margin-bottom: 10px;">
+                    + New MX Record
                 </button>
             </div>
         `;
@@ -2095,24 +2098,161 @@ async function createRecord(zoneId, zoneName, tokenId = null) {
     }
 }
 
+async function showCreateMXRecordDialog(zoneId, zoneName, tokenId = null) {
+    const dialog = document.createElement('div');
+    dialog.className = 'modal-overlay';
+    dialog.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center;';
+    
+    dialog.innerHTML = `
+        <div style="background: white; padding: 30px; border-radius: 8px; max-width: 500px; width: 90%; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <h2 style="margin-top: 0;">Neuer MX-Eintrag</h2>
+            <p style="color: #666; margin-bottom: 20px;">Zone: ${escapeHtml(zoneName)}</p>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold;">Name:</label>
+                <input type="text" id="newMXRecordName" placeholder="z.B. @ oder mail (Leer = Root)" value="@" style="width: 110px; display: inline-block; max-width: 100%; padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <small style="color: #666;">@ oder leer = Root, sonst Subdomain</small>
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold;">MX-Einträge:</label>
+                <textarea id="newMXRecords" rows="4" placeholder="10 mail.example.com.&#10;20 mx2.example.com." style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;"></textarea>
+                <small style="color: #666;">Pro Zeile oder kommagetrennt: Priorität Leerzeichen Mail-Server (z.B. 10 mail.example.com.) - Punkt am Ende erforderlich</small>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold;">TTL (Sekunden):</label>
+                <select id="newMXRecordTTL" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    <option value="3600" selected>3600s</option>
+                    <option value="60">60s</option>
+                    <option value="300">300s</option>
+                    <option value="600">600s</option>
+                    <option value="1800">1800s</option>
+                    <option value="86400">86400s</option>
+                </select>
+            </div>
+            
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button onclick="this.closest('.modal-overlay').remove()" class="btn btn-secondary" style="padding: 10px 20px;">Abbrechen</button>
+                <button id="createMXRecordBtn" data-zone-id="${escapeHtml(zoneId)}" data-zone-name="${escapeHtml(zoneName)}" data-token-id="${escapeHtml(tokenId || '')}" class="btn btn-primary" style="padding: 10px 20px;">Erstellen</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(dialog);
+    dialog.addEventListener('click', function(e) { if (e.target === dialog) dialog.remove(); });
+    
+    document.getElementById('createMXRecordBtn').addEventListener('click', function() {
+        createMXRecord(this.dataset.zoneId, this.dataset.zoneName, this.dataset.tokenId || null);
+    });
+    setTimeout(() => document.getElementById('newMXRecordName').focus(), 100);
+}
+
+async function createMXRecord(zoneId, zoneName, tokenId = null) {
+    const nameInput = document.getElementById('newMXRecordName');
+    const recordsInput = document.getElementById('newMXRecords');
+    const ttlInput = document.getElementById('newMXRecordTTL');
+    const createBtn = document.getElementById('createMXRecordBtn');
+    
+    const name = (nameInput.value.trim() || '@').replace(/^\s+|\s+$/g, '') || '@';
+    const raw = (recordsInput.value || '').split(/[\n,]+/).map(r => r.trim()).filter(Boolean);
+    const ttl = parseInt(ttlInput.value, 10) || 3600;
+    
+    if (raw.length === 0) {
+        showToast('Bitte mindestens einen MX-Eintrag (Priorität Mail-Server) eingeben.', 'error');
+        return;
+    }
+    
+    const mxRegex = /^\d+\s+\S+$/;
+    const hostnameRegex = /^(?=.{1,253}\.$)([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+$/;
+    const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
+    const ipv6Regex = /^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$/;
+    const records = [];
+    for (const r of raw) {
+        if (!mxRegex.test(r)) {
+            showToast('Ungültiges MX-Format: ' + r + '. Erwartet: Priorität Leerzeichen Mail-Server (z.B. 10 mail.example.com)', 'error');
+            return;
+        }
+        const parts = r.trim().split(/\s+/);
+        const prio = parseInt(parts[0], 10);
+        if (isNaN(prio) || prio < 0 || prio > 65535) {
+            showToast('MX-Priorität muss 0–65535 sein: ' + r, 'error');
+            return;
+        }
+        const target = parts.slice(1).join(' ');
+        if (!target.endsWith('.')) {
+            showToast('MX-Hostname muss mit Punkt enden: ' + target, 'error');
+            return;
+        }
+        const targetNoDot = target.slice(0, -1);
+        if (ipv4Regex.test(targetNoDot) || ipv6Regex.test(targetNoDot)) {
+            showToast('MX-Ziel darf keine IP-Adresse sein: ' + target, 'error');
+            return;
+        }
+        if (!hostnameRegex.test(target)) {
+            showToast('Ungültiger MX-Hostname (FQDN mit Punkt erwartet): ' + target, 'error');
+            return;
+        }
+        records.push(r);
+    }
+    
+    const allowedTTL = [60, 300, 600, 1800, 3600, 86400];
+    if (!allowedTTL.includes(ttl)) {
+        showToast('TTL muss 60, 300, 600, 1800, 3600 oder 86400 sein.', 'error');
+        return;
+    }
+    
+    if (!tokenId) tokenId = getTokenIdForZone(zoneId);
+    const originalText = createBtn.textContent;
+    createBtn.disabled = true;
+    createBtn.textContent = 'Erstelle...';
+    
+    try {
+        let url = `/api/v1/zones/${zoneId}/rrsets`;
+        if (tokenId) url += `?token_id=${encodeURIComponent(tokenId)}`;
+        const response = await secureFetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, type: 'MX', records, ttl })
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Unbekannter Fehler' }));
+            showToast('Fehler: ' + (err.detail || response.statusText), 'error');
+            createBtn.disabled = false;
+            createBtn.textContent = originalText;
+            return;
+        }
+        showToast('MX-Eintrag erstellt', 'success');
+        (document.querySelector('.modal-overlay') || {}).remove?.();
+        await refreshZones();
+    } catch (e) {
+        showToast('Fehler: ' + e.message, 'error');
+        createBtn.disabled = false;
+        createBtn.textContent = originalText;
+    }
+}
+
 function showEditRecordDialog(zoneId, rrsetId, recordName, recordType, currentRecords, currentTTL) {
     const dialog = document.createElement('div');
     dialog.className = 'modal-overlay';
     dialog.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center;';
     
+    // Name: immer den echten Record-Namen anzeigen (@ für Root, mail, etc.). Fallback aus rrsetId (z.B. @/MX → @).
+    const nameForDisplay = recordName || (rrsetId ? String(rrsetId).split('/')[0] : '') || '@';
+    
     // Parse current records (comma-separated)
-    const recordsArray = currentRecords ? currentRecords.split(',').map(r => r.trim()) : [''];
-    const firstRecord = recordsArray[0] || '';
+    const recordsArray = currentRecords ? currentRecords.split(',').map(r => r.trim()).filter(Boolean) : [];
+    const valueDisplay = recordsArray.length > 0 ? recordsArray.join(', ') : '';
     
     dialog.innerHTML = `
         <div style="background: white; padding: 30px; border-radius: 8px; max-width: 500px; width: 90%; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
             <h2 style="margin-top: 0;">Edit Record</h2>
-            <p style="color: #666; margin-bottom: 20px;">Record: <strong>${escapeHtml(recordName === '@' ? '@' : recordName)}/${escapeHtml(recordType)}</strong></p>
+            <p style="color: #666; margin-bottom: 20px;">Record: <strong>${escapeHtml(nameForDisplay)}/${escapeHtml(recordType)}</strong></p>
             
             <div style="margin-bottom: 15px;">
                 <label style="display: block; margin-bottom: 5px; font-weight: bold;">Name:</label>
-                <input type="text" id="editRecordName" placeholder="e.g. test or @ for root" value="${escapeHtml(recordName === '@' ? '' : recordName)}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                <small style="color: #666;">Leave empty or @ for root domain</small>
+                <input type="text" id="editRecordName" placeholder="e.g. test or @ for root" value="${escapeHtml(nameForDisplay)}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <small style="color: #666;">@ = Root; sonst Subdomain (z.B. mail)</small>
             </div>
             
             <div style="margin-bottom: 15px;">
@@ -2120,13 +2260,14 @@ function showEditRecordDialog(zoneId, rrsetId, recordName, recordType, currentRe
                 <select id="editRecordType" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
                     <option value="A" ${recordType === 'A' ? 'selected' : ''}>A (IPv4)</option>
                     <option value="AAAA" ${recordType === 'AAAA' ? 'selected' : ''}>AAAA (IPv6)</option>
+                    <option value="MX" ${recordType === 'MX' ? 'selected' : ''}>MX (Mail)</option>
                 </select>
             </div>
             
             <div style="margin-bottom: 15px;">
                 <label style="display: block; margin-bottom: 5px; font-weight: bold;">Value(s):</label>
-                <input type="text" id="editRecordValue" placeholder="e.g. 192.168.1.1 or multiple values separated by comma" value="${escapeHtml(firstRecord)}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                <small style="color: #666;">Multiple values separated by comma (e.g. 1.2.3.4, 5.6.7.8)</small>
+                <input type="text" id="editRecordValue" placeholder="z.B. 192.168.1.1 oder 10 mail.example.com. (MX: Priorität Leerzeichen Ziel)" value="${escapeHtml(valueDisplay)}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <small style="color: #666;">A/AAAA: IPs kommagetrennt. MX: Priorität und Mail-Server (z.B. 10 mail.example.com.), kommagetrennt - Punkt am Ende erforderlich</small>
             </div>
             
             <div style="margin-bottom: 20px;">
@@ -2202,7 +2343,7 @@ async function updateRecord(zoneId, rrsetId) {
         return;
     }
     
-    // Basic IP validation for A/AAAA records
+    // Validation by record type
     if (type === 'A') {
         const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
         for (const record of records) {
@@ -2216,6 +2357,37 @@ async function updateRecord(zoneId, rrsetId) {
         for (const record of records) {
             if (!ipv6Regex.test(record)) {
                 showToast('Invalid IPv6 address: ' + record, 'error');
+                return;
+            }
+        }
+    } else if (type === 'MX') {
+        const mxRegex = /^\d+\s+\S+$/;
+        const hostnameRegex = /^(?=.{1,253}\.$)([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+$/;
+        const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
+        const ipv6Regex = /^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$/;
+        for (const record of records) {
+            if (!mxRegex.test(record)) {
+                showToast('Ungültiges MX-Format: ' + record + '. Erwartet: Priorität Leerzeichen Mail-Server (z.B. 10 mail.example.com)', 'error');
+                return;
+            }
+            const parts = record.trim().split(/\s+/);
+            const prio = parseInt(parts[0], 10);
+            if (isNaN(prio) || prio < 0 || prio > 65535) {
+                showToast('MX-Priorität muss 0–65535 sein: ' + record, 'error');
+                return;
+            }
+            const target = parts.slice(1).join(' ');
+            if (!target.endsWith('.')) {
+                showToast('MX-Hostname muss mit Punkt enden: ' + target, 'error');
+                return;
+            }
+            const targetNoDot = target.slice(0, -1);
+            if (ipv4Regex.test(targetNoDot) || ipv6Regex.test(targetNoDot)) {
+                showToast('MX-Ziel darf keine IP-Adresse sein: ' + target, 'error');
+                return;
+            }
+            if (!hostnameRegex.test(target)) {
+                showToast('Ungültiger MX-Hostname (FQDN mit Punkt erwartet): ' + target, 'error');
                 return;
             }
         }
@@ -4744,4 +4916,3 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 });
-

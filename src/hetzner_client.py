@@ -21,27 +21,40 @@ class HetznerDNSClient:
         self._api: Optional[HetznerDNSAPI] = None
     
     def _get_token_and_base_url(self) -> tuple:
-        """Get token and base URL, either from token_id or default"""
+        """Get token, base URL, and API type hint, either from token_id or default"""
+        api_type = "new"
         if self.token_id:
             token_data = self.config.get_token_by_id(self.token_id)
             if token_data:
                 base_url = token_data.get('base_url', '')
                 if not base_url:
                     base_url = 'https://api.hetzner.cloud/v1'
-                return token_data.get('token'), base_url
+                api_type = token_data.get('type', api_type)
+                return token_data.get('token'), base_url, api_type
         
         # Fallback to default method
         token = self.config.get_api_token('new')
         base_url = self.config.get_api_base_url('new')
-        return token, base_url
+        return token, base_url, api_type
     
     def _get_api(self) -> HetznerDNSAPI:
         """Get or create API client"""
         if self._api is None:
-            token, base_url = self._get_token_and_base_url()
+            token, base_url, api_type = self._get_token_and_base_url()
             if not token:
                 raise ValueError("API token not configured")
-            self._api = HetznerDNSAPI(token, base_url=base_url, use_bearer=True)
+            use_bearer = True
+            if base_url and "dns.hetzner.com" in base_url:
+                use_bearer = False
+                if base_url.endswith("/api"):
+                    base_url = f"{base_url}/v1"
+            elif api_type in ["old", "dns", "console"]:
+                use_bearer = False
+                if not base_url:
+                    base_url = "https://dns.hetzner.com/api/v1"
+                elif base_url.endswith("/api"):
+                    base_url = f"{base_url}/v1"
+            self._api = HetznerDNSAPI(token, base_url=base_url, use_bearer=use_bearer)
         return self._api
     
     async def list_zones(self) -> List[Zone]:
@@ -87,4 +100,3 @@ class HetznerDNSClient:
         """Close API client"""
         if self._api:
             await self._api.close()
-

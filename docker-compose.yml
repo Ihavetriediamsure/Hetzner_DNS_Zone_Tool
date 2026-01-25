@@ -2,9 +2,9 @@ version: '3.8'
 
 services:
   hetzner-dns-zone-tool:
-    # Pre-built image from GitHub Container Registry
-    # For local testing, use: image: hetzner-dns-zone-tool:latest
-    image: ghcr.io/ihavetriediamsure/hetzner_dns_zone_tool:latest
+    build: .
+    # Pre-built: image: ghcr.io/ihavetriediamsure/hetzner_dns_zone_tool:latest
+    image: hetzner-dns-zone-tool:latest
     
     # Automatically restart container if it stops
     restart: unless-stopped

@@ -58,14 +58,15 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict
 from pathlib import Path
 import logging
-import httpx
+import ipaddress
+import re
+import urllib.parse
 import httpx
 import socket
 import asyncio
 import yaml
 import hashlib
 import json
-import socket
 
 # Configure logging
 logging.basicConfig(
@@ -1748,8 +1749,9 @@ async def set_comment(zone_id: str, rrset_id: str, request: SetCommentRequest, h
 
 @app.put("/api/v1/zones/{zone_id}/rrsets/{rrset_id:path}/ip")
 async def set_ip(zone_id: str, rrset_id: str, request: SetIPRequest, http_request: Request, token_id: Optional[str] = None):
-    """Set IP address for an A or AAAA DNS record"""
+    """Set IP address for an A or AAAA DNS record (z.B. Inline-Änderung in der Tabelle)."""
     require_authenticated(http_request)
+    rrset_id = urllib.parse.unquote(rrset_id)
     try:
         # Validate IP is public (not private)
         is_valid, error_msg = IPValidator.validate_public_ip(request.ip)
@@ -1758,7 +1760,6 @@ async def set_ip(zone_id: str, rrset_id: str, request: SetIPRequest, http_reques
         
         client = HetznerDNSClient(token_id=token_id)
         try:
-            # Get current RRSet from list to preserve all data
             rrsets = await client.list_rrsets(zone_id)
             current_rrset = None
             for rrset in rrsets:
@@ -1845,14 +1846,41 @@ async def set_ip(zone_id: str, rrset_id: str, request: SetIPRequest, http_reques
         raise HTTPException(status_code=500, detail=f"Error setting IP: {str(e)}")
 
 
+def _validate_mx_records(records: list) -> tuple[bool, str]:
+    """MX: jeder Eintrag = 'Priorität Ziel.' (Punkt erforderlich). Priorität 0–65535."""
+    mx_re = re.compile(r'^\s*(\d{1,5})\s+(\S+)\s*$')
+    hostname_re = re.compile(
+        r'^(?=.{1,253}\.$)([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+$'
+    )
+    for r in records:
+        m = mx_re.match(r)
+        if not m:
+            return False, f"Ungültiges MX-Format: '{r}'. Erwartet: Priorität Leerzeichen Mail-Server (z.B. 10 mail.example.com)"
+        prio = int(m.group(1))
+        if prio < 0 or prio > 65535:
+            return False, f"MX-Priorität muss 0–65535 sein: '{r}'"
+        target = m.group(2).strip()
+        if not target.endswith('.'):
+            return False, f"MX-Hostname muss mit Punkt enden: '{target}'"
+        target_no_dot = target[:-1]
+        try:
+            ipaddress.ip_address(target_no_dot)
+            return False, f"MX-Ziel darf keine IP-Adresse sein: '{target}'"
+        except ValueError:
+            pass
+        if not hostname_re.match(target):
+            return False, f"Ungültiger MX-Hostname (FQDN mit Punkt erwartet): '{target}'"
+    return True, ""
+
+
 @app.post("/api/v1/zones/{zone_id}/rrsets")
 async def create_rrset(zone_id: str, request: CreateRRSetRequest, http_request: Request, token_id: Optional[str] = None):
-    """Create a new RRSet (A or AAAA record)"""
+    """Create a new RRSet (A, AAAA or MX record)"""
     require_authenticated(http_request)
     try:
         # Validate record type
-        if request.type not in ['A', 'AAAA']:
-            raise HTTPException(status_code=400, detail="Only A and AAAA records can be created.")
+        if request.type not in ['A', 'AAAA', 'MX']:
+            raise HTTPException(status_code=400, detail="Nur A-, AAAA- und MX-Einträge können erstellt werden.")
         
         # Validate TTL
         allowed_ttl_values = [60, 300, 600, 1800, 3600, 86400]
@@ -1860,11 +1888,16 @@ async def create_rrset(zone_id: str, request: CreateRRSetRequest, http_request: 
         if ttl_to_use not in allowed_ttl_values:
             raise HTTPException(status_code=400, detail="TTL must be one of the allowed values: 60, 300, 600, 1800, 3600, 86400 seconds")
         
-        # Validate IP format and ensure they are public IPs
-        for record in request.records:
-            is_valid, error_msg = IPValidator.validate_public_ip(record)
-            if not is_valid:
-                raise HTTPException(status_code=400, detail=error_msg)
+        if request.type == 'MX':
+            ok, err = _validate_mx_records(request.records)
+            if not ok:
+                raise HTTPException(status_code=400, detail=err)
+        else:
+            # Validate IP format and ensure they are public IPs (A/AAAA)
+            for record in request.records:
+                is_valid, error_msg = IPValidator.validate_public_ip(record)
+                if not is_valid:
+                    raise HTTPException(status_code=400, detail=error_msg)
         
         username = http_request.session.get("username", "unknown") if hasattr(http_request, 'session') else "unknown"
         audit_log = get_audit_log()
@@ -1904,59 +1937,62 @@ async def create_rrset(zone_id: str, request: CreateRRSetRequest, http_request: 
 
 @app.put("/api/v1/zones/{zone_id}/rrsets/{rrset_id:path}")
 async def update_rrset(zone_id: str, rrset_id: str, request: UpdateRRSetRequest, http_request: Request, token_id: Optional[str] = None):
-    """Update an RRSet"""
+    """Update an RRSet. Wie Erstellen: Name/Type aus rrset_id, Rest aus Request; kein get_rrset."""
     require_authenticated(http_request)
     try:
+        # Name/Type aus rrset_id parsen (Format "name/type", z.B. "mail/MX") – kein get_rrset nötig
+        decoded = urllib.parse.unquote(rrset_id)
+        parts = decoded.rsplit('/', 1)
+        if len(parts) != 2:
+            raise HTTPException(status_code=400, detail=f"Ungültiges RRSet-ID-Format: {rrset_id}")
+        old_name, old_type = parts[0], parts[1]
+        new_name = request.name if request.name is not None else old_name
+        new_type = request.type if request.type is not None else old_type
+        ttl_to_use = request.ttl if request.ttl is not None else 3600
+        comment = request.comment
+
+        allowed_ttl_values = [60, 300, 600, 1800, 3600, 86400]
+        if ttl_to_use not in allowed_ttl_values:
+            raise HTTPException(status_code=400, detail="TTL muss einer der erlaubten Werte sein: 60, 300, 600, 1800, 3600, 86400 Sekunden")
+
         client = HetznerDNSClient(token_id=token_id)
         try:
-            # Get current RRSet to preserve values if not provided (hetzner_dns_api encodiert rrset_id selbst)
-            current_rrset = await client.get_rrset(zone_id, rrset_id)
-            
-            # Use provided name/type or keep current ones
-            new_name = request.name if request.name is not None else current_rrset.name
-            new_type = request.type if request.type is not None else current_rrset.type
-            
-            # If name or type changed, we need to delete old RRSet and create new one
-            if new_name != current_rrset.name or new_type != current_rrset.type:
-                # Validate TTL if provided
-                allowed_ttl_values = [60, 300, 600, 1800, 3600, 86400]
-                ttl_to_use = request.ttl or current_rrset.ttl or 3600
-                if ttl_to_use not in allowed_ttl_values:
-                    raise HTTPException(status_code=400, detail="TTL muss einer der erlaubten Werte sein: 60, 300, 600, 1800, 3600, 86400 Sekunden")
-                
-                # Delete old RRSet
+            if new_name != old_name or new_type != old_type:
+                # Name/Type geändert: altes löschen, neues anlegen
+                if new_type in ['A', 'AAAA']:
+                    is_valid, error_msg = IPValidator.validate_ip_list(request.records)
+                    if not is_valid:
+                        raise HTTPException(status_code=400, detail=error_msg)
+                elif new_type == 'MX':
+                    ok, err = _validate_mx_records(request.records)
+                    if not ok:
+                        raise HTTPException(status_code=400, detail=err)
                 await client.delete_rrset(zone_id, rrset_id)
-                
-                # Create new RRSet with new name/type
                 updated_rrset = await client.create_or_update_rrset(
                     zone_id=zone_id,
                     name=new_name,
                     type=new_type,
                     records=request.records,
                     ttl=ttl_to_use,
-                    comment=request.comment or current_rrset.comment
+                    comment=comment
                 )
             else:
-                # Validate TTL if provided
-                allowed_ttl_values = [60, 300, 600, 1800, 3600, 86400]
-                ttl_to_use = request.ttl or current_rrset.ttl or 3600
-                if ttl_to_use not in allowed_ttl_values:
-                    raise HTTPException(status_code=400, detail="TTL muss einer der erlaubten Werte sein: 60, 300, 600, 1800, 3600, 86400 Sekunden")
-                
-                # Validate IPs are public (for A and AAAA records)
-                if current_rrset.type in ['A', 'AAAA']:
+                # Nur Records/TTL ändern – wie beim Erstellen: create_or_update_rrset (set_records)
+                if old_type in ['A', 'AAAA']:
                     is_valid, error_msg = IPValidator.validate_ip_list(request.records)
                     if not is_valid:
                         raise HTTPException(status_code=400, detail=error_msg)
-                
-                # Just update records and TTL
+                elif old_type == 'MX':
+                    ok, err = _validate_mx_records(request.records)
+                    if not ok:
+                        raise HTTPException(status_code=400, detail=err)
                 updated_rrset = await client.create_or_update_rrset(
                     zone_id=zone_id,
-                    name=current_rrset.name,
-                    type=current_rrset.type,
+                    name=old_name,
+                    type=old_type,
                     records=request.records,
                     ttl=ttl_to_use,
-                    comment=request.comment or current_rrset.comment
+                    comment=comment
                 )
             
             username = http_request.session.get("username", "unknown") if hasattr(http_request, 'session') else "unknown"
@@ -1980,6 +2016,10 @@ async def update_rrset(zone_id: str, rrset_id: str, request: UpdateRRSetRequest,
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception(
+            "Error updating RRSet zone_id=%s rrset_id=%s: %s",
+            zone_id, rrset_id, e,
+        )
         username = http_request.session.get("username", "unknown") if hasattr(http_request, 'session') else "unknown"
         audit_log = get_audit_log()
         audit_log.log(
@@ -2008,8 +2048,8 @@ async def assign_server_ip(zone_id: str, rrset_id: str, request: Request, token_
             detector = get_ip_detector()
             public_ip = await detector.get_public_ip()
         
-        # Parse rrset_id: format is "name/type" (e.g., "test/A" or "@/NS")
-        # rrset_id is already decoded by FastAPI :path
+        # Parse rrset_id: format "name/type" (z.B. "test/A"); bei Encodierung (z.B. test%2FA) erst unquoten
+        rrset_id = urllib.parse.unquote(rrset_id)
         parts = rrset_id.rsplit('/', 1)
         if len(parts) != 2:
             raise HTTPException(status_code=400, detail=f"Invalid RRSet ID format: {rrset_id}")
@@ -4146,4 +4186,3 @@ if __name__ == "__main__":
             uvicorn.run(app, host=host, port=port)
     else:
         uvicorn.run(app, host=host, port=port)
-
